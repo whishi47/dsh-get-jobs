@@ -998,6 +998,151 @@ console.log('\n[resume: AI evaluation, scoring UI and HTML report]')
   console.error = originalWarn
 }
 
+console.log('\n[daily delivery quota]')
+{
+  // 每日投递目标：合计 + 单平台两级，任一到达后端就自动停投。
+  // 这里验证面板能不能把目标写回去、今日进度读得出来、以及重置按钮真的打到接口。
+  const originalFetch = globalThis.fetch
+  const originalWarn = console.error
+  let savedConfig
+  let resetCalled = 0
+  let quotaBody = {
+    success: true,
+    data: {
+      day: '2026-11-05',
+      target: 30,
+      delivered: 12,
+      remaining: 18,
+      reached: false,
+      byPlatform: { boss: 8, liepin: 4 },
+      platforms: {
+        boss: { delivered: 8, target: 20, remaining: 12, reached: false },
+        liepin: { delivered: 4, target: 10, remaining: 6, reached: false },
+        '51job': { delivered: 0, target: 0, remaining: -1, reached: false },
+        zhilian: { delivered: 0, target: 0, remaining: -1, reached: false },
+      },
+      workHours: '09:00 - 23:00',
+      inWorkHours: true,
+      serverTime: '2026-11-05T12:00:00',
+    },
+  }
+  const jsonOk = (payload) => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify(payload),
+    json: async () => payload,
+  })
+
+  globalThis.fetch = async (url, init) => {
+    const target = String(url)
+    if (target.includes('/dsh-get-jobs/health')) {
+      return jsonOk({
+        plugin: 'dsh-get-jobs', baseUrl: 'http://127.0.0.1:9527',
+        reachable: true, state: 'ready', managed: true, pid: 1, message: '后端在线',
+      })
+    }
+    if (target.includes('/api/delivery/quota/reset') && init?.method === 'POST') {
+      resetCalled += 1
+      quotaBody.data.delivered = 0
+      quotaBody.data.remaining = 30
+      quotaBody.data.reached = false
+      return jsonOk(quotaBody)
+    }
+    if (target.includes('/api/delivery/quota')) return jsonOk(quotaBody)
+    if (target.includes('/api/config') && init?.method === 'POST') {
+      savedConfig = JSON.parse(String(init.body ?? '{}'))
+      return jsonOk({ success: true })
+    }
+    if (target.includes('/api/config')) {
+      return jsonOk({
+        success: true,
+        data: {
+          DELIVERY_DAILY_TARGET: '30',
+          DELIVERY_DAILY_TARGET_BOSS: '20',
+          DELIVERY_DAILY_TARGET_LIEPIN: '10',
+          DELIVERY_DAILY_TARGET_51JOB: '0',
+          DELIVERY_DAILY_TARGET_ZHILIAN: '0',
+          DELIVERY_WORK_HOURS: '9-23',
+        },
+      })
+    }
+    if (target.includes('/status')) return jsonOk({ isRunning: false, isLoggedIn: true })
+    return { ok: false, status: 503, text: async () => 'unavailable', json: async () => ({}) }
+  }
+  dom.window.fetch = globalThis.fetch
+  console.error = () => {}
+
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  await React.act(async () => { root.render(React.createElement(mainEntry.component)) })
+
+  const runTab = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '运行')
+  await React.act(async () => { runTab.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+  await React.act(async () => { await new Promise((done) => setTimeout(done, 120)) })
+
+  const text = () => container.textContent ?? ''
+  check('运行页有「今日投递目标」卡片', text().includes('今日投递目标'), text().slice(0, 200))
+  check('显示今日已投 / 合计目标', text().includes('/ 30 份（今日合计）'), text().slice(0, 300))
+  check('显示还差多少份', text().includes('还差 18 份'), text().slice(0, 300))
+  check('有合计目标输入', text().includes('合计每日目标'))
+  check('有允许投递时段输入', text().includes('允许投递时段'))
+  check('四个平台都能单独设目标',
+    ['Boss直聘', '猎聘', '51job', '智联招聘'].every((label) => text().includes(label)),
+    text().slice(0, 400))
+  check('显示当前在时段内', text().includes('时段内 09:00 - 23:00'), text().slice(0, 400))
+
+  const values = [...container.querySelectorAll('input')].map((node) => node.value)
+  check('目标输入回填了后端配置', values.includes('30') && values.includes('20') && values.includes('10'), values.join('|'))
+  check('时段输入回填了后端配置', values.includes('9-23'), values.join('|'))
+
+  const saveButton = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '保存目标')
+  check('有保存目标按钮', Boolean(saveButton))
+  if (saveButton) {
+    await React.act(async () => {
+      saveButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+      await new Promise((done) => setTimeout(done, 90))
+    })
+    check('保存目标发出了 POST /api/config', savedConfig !== undefined, '未触发')
+    if (savedConfig) {
+      check('合计目标写进 DELIVERY_DAILY_TARGET', savedConfig.DELIVERY_DAILY_TARGET === '30', JSON.stringify(savedConfig))
+      check('单平台目标写进 DELIVERY_DAILY_TARGET_BOSS', savedConfig.DELIVERY_DAILY_TARGET_BOSS === '20', JSON.stringify(savedConfig))
+      check('时段写进 DELIVERY_WORK_HOURS', savedConfig.DELIVERY_WORK_HOURS === '9-23', JSON.stringify(savedConfig))
+    }
+    check('保存后给出提示', text().includes('已保存'), text().slice(0, 300))
+  }
+
+  const resetButton = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '重置今日计数')
+  check('有重置今日计数按钮', Boolean(resetButton))
+  if (resetButton) {
+    await React.act(async () => {
+      resetButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+      await new Promise((done) => setTimeout(done, 90))
+    })
+    check('重置调用了 /api/delivery/quota/reset', resetCalled === 1, String(resetCalled))
+    check('重置后提示可继续投递', text().includes('今日计数已清零'), text().slice(0, 300))
+  }
+
+  // 达到目标时要有明确的"现在点开始会被拒绝"提示，而不是让用户莫名其妙点了没反应
+  quotaBody.data.delivered = 30
+  quotaBody.data.reached = true
+  quotaBody.data.remaining = 0
+  quotaBody.data.platforms.boss.reached = true
+  if (saveButton) {
+    await React.act(async () => {
+      saveButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+      await new Promise((done) => setTimeout(done, 90))
+    })
+  }
+  check('达目标后显示自动停投提示', text().includes('已达目标，自动停投'), text().slice(0, 400))
+  check('达目标后提示会被后端拒绝', text().includes('会被后端直接拒绝'), text().slice(0, 500))
+
+  await React.act(async () => { root.unmount() })
+  container.remove()
+  globalThis.fetch = originalFetch
+  console.error = originalWarn
+}
+
 for (const dispose of disposers) dispose()
 
 console.log(`\n${failures === 0 ? 'PASS' : 'FAIL'}: ${passes} passed, ${failures} failed`)

@@ -1,6 +1,7 @@
 package com.getjobs.worker.service;
 
 import com.getjobs.application.service.ConfigService;
+import com.getjobs.application.service.DeliveryQuotaService;
 import com.getjobs.worker.boss.Boss;
 import com.getjobs.worker.boss.BossConfig;
 import com.getjobs.worker.dto.JobProgressMessage;
@@ -27,6 +28,7 @@ public class BossJobService implements JobPlatformService {
 
     private final PlaywrightManager playwrightManager;
     private final ConfigService configService;
+    private final DeliveryQuotaService quotaService;
     private final ObjectProvider<Boss> bossProvider;
 
     // 任务运行状态
@@ -40,6 +42,23 @@ public class BossJobService implements JobPlatformService {
     public void executeDelivery(Consumer<JobProgressMessage> progressCallback) {
         if (isRunning) {
             progressCallback.accept(JobProgressMessage.warning(PLATFORM, "任务已在运行中"));
+            return;
+        }
+
+        // 两道前置闸门都只读数据库，不需要拉起浏览器：
+        // 已经投够今天的目标、或者当前不在允许的时段，就没必要白开一个浏览器窗口。
+        if (quotaService.isReached(PLATFORM)) {
+            String reason = quotaService.reachedReason(PLATFORM);
+            log.info("拒绝启动：{}（目标 {}，已投 {}）", reason, quotaService.dailyTarget(), quotaService.todayTotal());
+            progressCallback.accept(JobProgressMessage.warning(PLATFORM,
+                    reason + "，已自动暂停。可在「运行」页调整目标或重置今日计数"));
+            return;
+        }
+        if (!quotaService.isWithinWorkHours()) {
+            String window = quotaService.workWindowLabel();
+            log.info("拒绝启动：当前不在允许投递的时间段（{}）", window);
+            progressCallback.accept(JobProgressMessage.warning(PLATFORM, String.format(
+                    "当前不在允许投递的时间段（%s），已拒绝启动。可在「运行」页调整时间段", window)));
             return;
         }
 
@@ -97,8 +116,15 @@ public class BossJobService implements JobPlatformService {
             // Playwright 连接，导航被打断报 net::ERR_ABORTED，整个任务直接挂掉。
             int deliveredCount = playwrightManager.callOnPlaywright(boss::execute);
 
-            progressCallback.accept(JobProgressMessage.success(PLATFORM,
-                String.format("投递任务完成，共发起%d个聊天", deliveredCount)));
+            // 达到每日目标时给一条明确的收工提示，别让用户以为是自己点错了
+            if (quotaService.isReached(PLATFORM)) {
+                progressCallback.accept(JobProgressMessage.success(PLATFORM, String.format(
+                        "本次发起%d个聊天，%s，自动暂停投递",
+                        deliveredCount, quotaService.reachedReason(PLATFORM))));
+            } else {
+                progressCallback.accept(JobProgressMessage.success(PLATFORM,
+                    String.format("投递任务完成，共发起%d个聊天", deliveredCount)));
+            }
         } catch (Exception e) {
             log.error("Boss投递任务执行失败", e);
             progressCallback.accept(JobProgressMessage.error(PLATFORM, "投递失败: " + e.getMessage()));

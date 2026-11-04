@@ -93,6 +93,36 @@ export interface AiUsage {
   thinkingSwitchSupported?: boolean
 }
 
+/** One platform's daily delivery quota row. */
+export interface DeliveryQuotaPlatform {
+  delivered: number
+  /** 0 = 该平台不单独限制，只受合计目标约束。 */
+  target: number
+  /** -1 = 不限。 */
+  remaining: number
+  reached: boolean
+}
+
+/**
+ * Today's delivery quota snapshot (`GET /api/delivery/quota`).
+ *
+ * 两级配额：`target` 是所有平台加起来的合计上限，`platforms[x].target` 是单平台上限，
+ * 任一到达后端就会自动停投。
+ */
+export interface DeliveryQuota {
+  day: string
+  target: number
+  delivered: number
+  remaining: number
+  reached: boolean
+  byPlatform: Record<string, number>
+  platforms?: Partial<Record<Platform, DeliveryQuotaPlatform>>
+  /** 允许投递的时间段，如 `09:00 - 23:00`；空串表示全天。 */
+  workHours: string
+  inWorkHours: boolean
+  serverTime?: string
+}
+
 /** One scoring dimension in a resume evaluation. */
 export interface ResumeDimension {
   name: string
@@ -343,6 +373,21 @@ export class JobsApi {
   async aiUsage(): Promise<AiUsage> {
     const raw = await this.call<Record<string, unknown>>('GET', '/api/ai/usage')
     return (raw['data'] as AiUsage | undefined) ?? (raw as unknown as AiUsage)
+  }
+
+  /**
+   * 今日投递进度与每日目标（`GET /api/delivery/quota`）。
+   *
+   * 后端每成功投出一份就 +1，所以这个数字和配额闸门用的是同一份数据。
+   */
+  async deliveryQuota(): Promise<DeliveryQuota> {
+    const raw = await this.call<Record<string, unknown>>('GET', '/api/delivery/quota')
+    return (raw['data'] as DeliveryQuota | undefined) ?? (raw as unknown as DeliveryQuota)
+  }
+
+  /** 清零今天的投递计数（目标配置保留）。 */
+  resetDeliveryQuota(): Promise<unknown> {
+    return this.call('POST', '/api/delivery/quota/reset')
   }
 
   /**

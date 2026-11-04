@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 
 import { PLATFORMS, type Platform } from '../api.js'
-import { Badge, Button, Card, Empty, ErrorState, Icon, Spacer, Tabs } from '../components.js'
+import { Badge, Button, Card, Empty, ErrorState, Field, Icon, Input, Spacer, Tabs } from '../components.js'
 import { useBackend, usePolling, useResource } from '../hooks.js'
 import { pageStyle, tokens } from '../theme.js'
 
@@ -17,6 +17,14 @@ interface LogLine {
 }
 
 const MAX_LINES = 300
+
+/** 各平台每日目标对应的配置键（后端 DeliveryQuotaService 用同一套名字）。 */
+const PLATFORM_QUOTA_KEYS: Record<Platform, string> = {
+  boss: 'DELIVERY_DAILY_TARGET_BOSS',
+  liepin: 'DELIVERY_DAILY_TARGET_LIEPIN',
+  '51job': 'DELIVERY_DAILY_TARGET_51JOB',
+  zhilian: 'DELIVERY_DAILY_TARGET_ZHILIAN',
+}
 
 /** Delivery console. */
 export function Run(): React.ReactElement {
@@ -41,6 +49,36 @@ export function Run(): React.ReactElement {
     async () => (api ? api.loginState(platform) : undefined),
     [backend.revision, api?.baseUrl, platform],
   )
+
+  // 今日投递进度 + 每日目标（合计 / 单平台两级）
+  const quota = useResource(
+    async () => (api ? api.deliveryQuota() : undefined),
+    [backend.revision, api?.baseUrl],
+  )
+
+  const [quotaForm, setQuotaForm] = useState<Record<string, string> | undefined>(undefined)
+  const [quotaNotice, setQuotaNotice] = useState<string | undefined>(undefined)
+  const [quotaPending, setQuotaPending] = useState<'save' | 'reset' | undefined>(undefined)
+
+  // 表单初值来自后端配置；只加载一次，用户改过之后不再被轮询覆盖
+  useEffect(() => {
+    if (!api) return
+    let alive = true
+    api.appConfig()
+      .then((config) => {
+        if (!alive) return
+        setQuotaForm({
+          DELIVERY_DAILY_TARGET: config['DELIVERY_DAILY_TARGET'] ?? '0',
+          DELIVERY_DAILY_TARGET_BOSS: config['DELIVERY_DAILY_TARGET_BOSS'] ?? '0',
+          DELIVERY_DAILY_TARGET_LIEPIN: config['DELIVERY_DAILY_TARGET_LIEPIN'] ?? '0',
+          DELIVERY_DAILY_TARGET_51JOB: config['DELIVERY_DAILY_TARGET_51JOB'] ?? '0',
+          DELIVERY_DAILY_TARGET_ZHILIAN: config['DELIVERY_DAILY_TARGET_ZHILIAN'] ?? '0',
+          DELIVERY_WORK_HOURS: config['DELIVERY_WORK_HOURS'] ?? '',
+        })
+      })
+      .catch(() => { if (alive) setQuotaForm({}) })
+    return () => { alive = false }
+  }, [backend.revision, api?.baseUrl])
 
   // 扫码期间每 3 秒问一次；扫完（或超时 2 分钟）就停，避免无意义轮询
   usePolling(() => {
@@ -120,6 +158,8 @@ export function Run(): React.ReactElement {
         setActionError(String(result['message'] ?? '操作未成功'))
       }
       status.reload()
+      // 投递结束 / 开始时今日计数都可能变化，顺手刷新进度
+      quota.reload()
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : String(caught))
     } finally {
@@ -127,8 +167,44 @@ export function Run(): React.ReactElement {
     }
   }
 
+  async function saveQuota(): Promise<void> {
+    if (!api || !quotaForm) return
+    setQuotaPending('save')
+    setQuotaNotice(undefined)
+    try {
+      await api.saveAppConfig(quotaForm)
+      setQuotaNotice('已保存，下次启动投递时按新目标执行')
+      quota.reload()
+    } catch (caught) {
+      setQuotaNotice(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setQuotaPending(undefined)
+    }
+  }
+
+  async function resetQuota(): Promise<void> {
+    if (!api) return
+    setQuotaPending('reset')
+    setQuotaNotice(undefined)
+    try {
+      await api.resetDeliveryQuota()
+      setQuotaNotice('今日计数已清零，可以继续投递')
+      quota.reload()
+    } catch (caught) {
+      setQuotaNotice(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setQuotaPending(undefined)
+    }
+  }
+
   const running = status.data?.isRunning === true
   const loggedIn = status.data?.isLoggedIn === true || login.data?.isLoggedIn === true
+
+  const quotaData = quota.data
+  const deliveredToday = quotaData?.delivered ?? 0
+  const dailyTarget = quotaData?.target ?? 0
+  const quotaPercent = dailyTarget > 0 ? Math.min(Math.round((deliveredToday / dailyTarget) * 100), 100) : 0
+  const quotaReached = quotaData?.reached === true
 
   return (
     <div style={pageStyle}>
@@ -196,6 +272,115 @@ export function Run(): React.ReactElement {
           <Badge tone={loggedIn ? 'success' : 'accent'}>{loggedIn ? '已登录' : '等待扫码'}</Badge>
           <span style={{ flex: 1, minWidth: 0 }}>{loginNotice}</span>
           {watching ? <span style={{ color: tokens.color.textFaint }}>每 3 秒检测一次…</span> : null}
+        </div>
+      ) : null}
+
+      <Card
+        title="今日投递目标"
+        actions={(
+          <>
+            <Badge tone={quotaReached ? 'success' : 'accent'}>
+              {quotaReached ? '已达目标，自动停投' : `今日 ${deliveredToday}${dailyTarget > 0 ? ` / ${dailyTarget}` : ''} 份`}
+            </Badge>
+            <Button icon="refresh" onClick={resetQuota} disabled={!api || quotaPending !== undefined}>
+              {quotaPending === 'reset' ? '重置中…' : '重置今日计数'}
+            </Button>
+          </>
+        )}
+      >
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: tokens.font.sm }}>
+          <span style={{ fontWeight: 600, fontSize: tokens.font.xl, lineHeight: 1.1 }}>{deliveredToday}</span>
+          <span style={{ color: tokens.color.textMuted }}>
+            {dailyTarget > 0 ? `/ ${dailyTarget} 份（今日合计）` : '份（今日合计，未设上限）'}
+          </span>
+          <Spacer />
+          {dailyTarget > 0 ? (
+            <span style={{ color: quotaReached ? tokens.color.success : tokens.color.textMuted }}>
+              {quotaReached ? '已达成' : `还差 ${Math.max(dailyTarget - deliveredToday, 0)} 份`}
+            </span>
+          ) : null}
+        </div>
+
+        {dailyTarget > 0 ? (
+          <div style={{ height: 6, borderRadius: 3, background: tokens.color.surfaceAlt, overflow: 'hidden' }}>
+            <div style={{
+              width: `${quotaPercent}%`,
+              height: '100%',
+              background: quotaReached ? tokens.color.success : tokens.color.accent,
+              transition: 'width 200ms ease',
+            }} />
+          </div>
+        ) : null}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <Field label="合计每日目标" hint="0 = 不限；所有平台加起来投到这么多就停">
+            <Input
+              value={quotaForm?.['DELIVERY_DAILY_TARGET'] ?? ''}
+              placeholder="0"
+              inputMode="numeric"
+              onChange={(event) => { setQuotaForm((prev) => ({ ...(prev ?? {}), DELIVERY_DAILY_TARGET: event.target.value })); setQuotaNotice(undefined) }}
+            />
+          </Field>
+          <Field label="允许投递时段" hint="如 9-23；留空 = 全天可投，跨天写 22-6">
+            <Input
+              value={quotaForm?.['DELIVERY_WORK_HOURS'] ?? ''}
+              placeholder="9-23"
+              onChange={(event) => { setQuotaForm((prev) => ({ ...(prev ?? {}), DELIVERY_WORK_HOURS: event.target.value })); setQuotaNotice(undefined) }}
+            />
+          </Field>
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          {PLATFORMS.map((item) => {
+            const key = PLATFORM_QUOTA_KEYS[item.id]
+            const row = quotaData?.platforms?.[item.id]
+            return (
+              <div key={item.id} style={{ flex: '1 1 128px', minWidth: 128 }}>
+                <Field label={item.label} hint={`今日 ${row?.delivered ?? 0} 份 · 0 = 不限`}>
+                  <Input
+                    value={quotaForm?.[key] ?? ''}
+                    placeholder="0"
+                    inputMode="numeric"
+                    onChange={(event) => { setQuotaForm((prev) => ({ ...(prev ?? {}), [key]: event.target.value })); setQuotaNotice(undefined) }}
+                  />
+                </Field>
+              </div>
+            )
+          })}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <Button tone="primary" onClick={saveQuota} disabled={!api || !quotaForm || quotaPending !== undefined}>
+            {quotaPending === 'save' ? '保存中…' : '保存目标'}
+          </Button>
+          {quotaData?.workHours ? (
+            <Badge tone={quotaData.inWorkHours ? 'success' : 'warning'}>
+              {quotaData.inWorkHours ? `时段内 ${quotaData.workHours}` : `不在时段 ${quotaData.workHours}`}
+            </Badge>
+          ) : null}
+          {quotaNotice ? <span style={{ fontSize: tokens.font.xs, color: tokens.color.textMuted }}>{quotaNotice}</span> : null}
+        </div>
+
+        <div style={{ fontSize: tokens.font.xs, color: tokens.color.textFaint }}>
+          合计与单平台两级配额 <strong>任一到达</strong> 就自动停投；改完目标立刻生效，不用重启后端。
+        </div>
+      </Card>
+
+      {quotaReached ? (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 12px',
+          borderRadius: tokens.radius.md,
+          border: `1px solid ${tokens.color.success}`,
+          background: tokens.color.successSoft,
+          fontSize: tokens.font.sm,
+        }}>
+          <Icon name="check" size={14} />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            今日投递已达目标，现在点「开始投递」会被后端直接拒绝。想继续投，先调高目标或点上面的「重置今日计数」。
+          </span>
         </div>
       ) : null}
 

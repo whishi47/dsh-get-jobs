@@ -64,6 +64,16 @@ export function Overview({ onNavigate }: { onNavigate: (page: string) => void })
     [backend.revision, api?.baseUrl],
   )
 
+  // 今日投递进度：和运行页共用同一份配额数据
+  const quota = useResource(
+    async () => (api ? api.deliveryQuota() : undefined),
+    [backend.revision, api?.baseUrl],
+  )
+
+  const deliveredToday = quota.data?.delivered ?? 0
+  const dailyTarget = quota.data?.target ?? 0
+  const quotaPercent = dailyTarget > 0 ? Math.min(Math.round((deliveredToday / dailyTarget) * 100), 100) : 0
+
   const kpi = stats.data?.kpi ?? {}
   const kpiCards: Array<[string, number, string]> = [
     ['抓取岗位', Number(kpi['total'] ?? 0), '从招聘网站抓到的岗位'],
@@ -85,7 +95,7 @@ export function Overview({ onNavigate }: { onNavigate: (page: string) => void })
           {backend.health ? (backend.health.reachable ? '后端在线' : '后端未启动') : '检查中'}
         </Badge>
         <Spacer />
-        <Button icon="refresh" onClick={() => { backend.reload(); statuses.reload(); stats.reload() }}>刷新</Button>
+        <Button icon="refresh" onClick={() => { backend.reload(); statuses.reload(); stats.reload(); quota.reload() }}>刷新</Button>
       </div>
 
       {backend.error ? <ErrorState message={backend.error} onRetry={backend.reload} /> : null}
@@ -119,6 +129,34 @@ export function Overview({ onNavigate }: { onNavigate: (page: string) => void })
           ]} />
         )}
       </Card>
+
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        flexWrap: 'wrap',
+        padding: '10px 14px',
+        borderRadius: tokens.radius.lg,
+        border: `1px solid ${tokens.color.border}`,
+        background: tokens.color.surface,
+        fontSize: tokens.font.sm,
+      }}>
+        <span style={{ color: tokens.color.textMuted }}>今日已投</span>
+        <span style={{ fontWeight: 600, fontSize: tokens.font.lg }}>{deliveredToday}</span>
+        <span style={{ color: tokens.color.textMuted }}>
+          {dailyTarget > 0 ? `/ ${dailyTarget} 份` : '份（未设每日目标）'}
+        </span>
+        {dailyTarget > 0 ? (
+          <div style={{ flex: '1 1 120px', minWidth: 80, height: 6, borderRadius: 3, background: tokens.color.surfaceAlt, overflow: 'hidden' }}>
+            <div style={{ width: `${quotaPercent}%`, height: '100%', background: quota.data?.reached ? tokens.color.success : tokens.color.accent }} />
+          </div>
+        ) : null}
+        <Badge tone={quota.data?.reached ? 'success' : 'neutral'}>
+          {quota.data?.reached ? '已达目标，自动停投' : dailyTarget > 0 ? `还差 ${Math.max(dailyTarget - deliveredToday, 0)} 份` : '不限额'}
+        </Badge>
+        <Spacer />
+        <Button icon="sliders" onClick={() => onNavigate('run')}>设置今日目标</Button>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: tokens.space(3) }}>
         {kpiCards.map(([label, value, hint]) => (

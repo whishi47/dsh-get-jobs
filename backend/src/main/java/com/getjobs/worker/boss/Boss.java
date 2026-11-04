@@ -4,6 +4,7 @@ import com.getjobs.application.entity.AiEntity;
 import com.getjobs.application.service.AiService;
 import com.getjobs.application.service.BossResumeImageService;
 import com.getjobs.application.service.BossService;
+import com.getjobs.application.service.DeliveryQuotaService;
 import com.getjobs.worker.utils.Job;
 import com.getjobs.worker.utils.JobUtils;
 import com.getjobs.worker.utils.PlaywrightUtil;
@@ -50,6 +51,8 @@ public class Boss {
     private final BossService bossService;
     private final AiService aiService;
     private final BossResumeImageService bossResumeImageService;
+    /** 每日投递配额：达到目标就收工，避免一口气投太多。 */
+    private final DeliveryQuotaService deliveryQuotaService;
     private Set<String> blackCompanies;
     private Set<String> blackRecruiters;
     private Set<String> blackJobs;
@@ -61,6 +64,9 @@ public class Boss {
     private Supplier<Boolean> shouldStopCallback;
 
     private final List<Job> resultList = new ArrayList<>();
+
+    /** 本次运行是否因为「今日投递已达目标」而提前收工。 */
+    private boolean quotaStop = false;
 
     /**
      * 池化生成的招呼语：一次批量生成多条，按岗位轮换使用。
@@ -121,7 +127,15 @@ public class Boss {
     public int execute() {
         // 每次投递重新计算「本次运行」的 AI 用量（今日累计不清零）
         aiService.resetRunUsage();
+        quotaStop = false;
+        // 今天已经投够了就直接收工，别让浏览器白开一趟
+        if (deliveryQuotaService.isReached("boss")) {
+            progressCallback.accept(quotaStopMessage(), 0, 0);
+            log.info("{}，本次不启动", quotaStopMessage());
+            return 0;
+        }
         for (String cityCode : config.getCityCode()) {
+            if (quotaStop) break;
             if (shouldStopCallback != null && Boolean.TRUE.equals(shouldStopCallback.get())) {
                 progressCallback.accept("用户取消投递", 0, 0);
                 break;
@@ -132,7 +146,16 @@ public class Boss {
                 break;
             }
         }
+        if (quotaStop) {
+            log.info("本次运行因每日目标收工：已投 {} 份", resultList.size());
+        }
         return resultList.size();
+    }
+
+    /** 达到每日目标时的提示文案（说明是合计额度还是平台额度用尽）。 */
+    private String quotaStopMessage() {
+        String reason = deliveryQuotaService.reachedReason("boss");
+        return (reason.isEmpty() ? "已达今日投递目标" : reason) + "，自动暂停投递";
     }
 
     /**
@@ -239,6 +262,8 @@ public class Boss {
     private void postJobByCity(String cityCode) {
         String searchUrl = getSearchUrl(cityCode);
         for (String keyword : config.getKeywords()) {
+            // 今天投够了就不再开新的关键词，省得每次都进列表页滚一遍
+            if (quotaStop) return;
             // 检查是否需要停止
             if (shouldStopCallback.get()) {
                 progressCallback.accept("用户取消投递", 0, 0);
@@ -339,6 +364,14 @@ public class Boss {
             Locator cards = page.locator("//ul[contains(@class, 'rec-job-list')]//li[contains(@class, 'job-card-box')]");
             int count = cards.count();
             for (int i = 0; i < count; i++) {
+                // 每日目标到了就停手：这里是最内层循环，必须第一时间退出，
+                // 否则会把当前列表的岗位全点一遍才收工。
+                if (deliveryQuotaService.isReached("boss")) {
+                    quotaStop = true;
+                    progressCallback.accept(quotaStopMessage(), i, count);
+                    log.info("{}（关键词：{}）", quotaStopMessage(), keyword);
+                    return;
+                }
                 // 检查是否需要停止
                 if (shouldStopCallback != null && Boolean.TRUE.equals(shouldStopCallback.get())) {
                     progressCallback.accept("用户取消投递", i, count);
@@ -1177,6 +1210,8 @@ public class Boss {
                     log.debug("未能找到 encryptId/encryptUserId 用于更新投递状态，detailUrl: {}", detailUrl);
                 }
                 resultList.add(job);
+                // 打点：成功投出去一份才计数，失败/跳过都不算
+                deliveryQuotaService.recordDelivery("boss");
             } else {
                 // 若发生发送失败，也进行状态更新
                 String encryptId = extractEncryptId(detailUrl);

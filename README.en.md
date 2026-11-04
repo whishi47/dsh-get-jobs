@@ -64,7 +64,7 @@ You do **not** write code. You do **not** install a database, compile Java, star
 | --- | --- |
 | **Overview** | Is the backend alive? System healthy? Any errors? |
 | **Delivery Config** | Job keywords, city, salary, which platforms; default greeting (with one-click **AI Polish**); upload an image resume; keep a company blacklist |
-| **Run** | Press Start to apply with your criteria, press Stop whenever; crashes auto-retry at 3s / 10s / 30s |
+| **Run** | Press Start to apply with your criteria, press Stop whenever. Set **how many to send today** (one total, plus one per platform) and it stops by itself once reached; crashes auto-retry at 3s / 10s / 30s |
 | **Data** | All applied positions in one table, filter by platform, export xlsx (single platform or all four merged) |
 | **Resume** | Upload PDF / DOCX / TXT / MD, let an LLM draft your delivery config, preview, edit, save it back |
 | **Settings** | AI key / endpoint / model, company blacklist with CSV export, system status and diagnostics |
@@ -203,6 +203,7 @@ It is cached afterwards, so **later runs work offline**. Playwright's browser is
 | "Send image resume" checked but nothing sent | You must **upload** the image first in **Delivery Config** (a thumbnail appears when it worked). The checkbox alone does nothing |
 | Do I need MySQL / Redis? | No. One SQLite file, that's it |
 | Is my resume / key uploaded somewhere? | Data stays local; AI calls go to **your** configured endpoint. Never share the runtime `db/getjobs.db` — it may contain your config |
+| How do I cap how many I send per day? | On the **Run** page, set a total (e.g. 30) and/or a number per platform (e.g. Boss 20, Liepin 10; `0` means no per-platform cap). **Whichever limit is hit first wins** — it stops there. Changes apply immediately, no restart |
 | Will my account get banned? | There is a risk. Keep the frequency low, follow platform rules, do not use it for mass-applying on behalf of others |
 | I want to modify the code | See **Developer mode** below; clone and run `npm install --legacy-peer-deps` |
 | macOS / Linux? | The panel is a web UI and the backend is Java. JDK 21 + Node 20 are enough; adjust paths for your OS |
@@ -221,6 +222,7 @@ It is cached afterwards, so **later runs work offline**. Playwright's browser is
 | **Delivery** | AI greeting | One-click polish of the default greeting; backend can generate a job-aware greeting |
 | **Delivery** | Image resume | Upload a resume image and send it along with the greeting |
 | **Delivery** | Blacklist | Paginated company blacklist (10/page) + CSV export (with BOM, opens cleanly in Excel) |
+| **Delivery** | Daily target | Two-level quota: a combined total plus per-platform caps; **any one reaching its limit stops the run**. Optional working-hours window (e.g. `9-23`). Today's progress and a reset button live on the Run page |
 | **Data** | Job table | Normalized positions, single-platform or four-platform merge, streamed xlsx export |
 | **Resume** | Parse & draft | PDF / DOCX / TXT / MD → LLM config draft → preview & edit → write back |
 | **Panel** | Six native screens | Overview / Delivery Config / Run / Data / Resume / Settings — no iframe, no extra port, every screen scrolls |
