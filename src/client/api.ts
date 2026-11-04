@@ -84,6 +84,8 @@ export interface AiUsage {
     daily: number
     maxTokens: number
     disableThinking: boolean
+    /** `off` = 关闭思考（最省），`auto` = 模型默认，`high` = 深度思考（最贵）。 */
+    thinkingMode?: 'off' | 'auto' | 'high'
     greetingPool: boolean
     greetingBatch: number
   }

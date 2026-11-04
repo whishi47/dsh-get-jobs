@@ -50,7 +50,15 @@ const AI_COST_KEYS = [
   'AI_GREETING_BATCH',
   'AI_GREETING_POOL',
   'AI_SKIP_MISMATCH',
+  'AI_THINKING_MODE',
 ] as const
+
+/** 思考模式三档；off 最省，high 最贵。 */
+const THINKING_MODES: Array<{ value: 'off' | 'auto' | 'high'; label: string; hint: string }> = [
+  { value: 'off', label: '关闭', hint: '不产生思考 token，最省' },
+  { value: 'auto', label: '自动', hint: '跟随模型默认行为' },
+  { value: 'high', label: '深度', hint: '让模型多想，输出 token 明显增加' },
+]
 
 /** 池化开关缺省为开：老库里没有这个键时也要按省钱模式跑。 */
 const AI_POOL_DEFAULT = '1'
@@ -204,6 +212,8 @@ export function Settings(): React.ReactElement {
     if (key === 'AI_GREETING_POOL') return AI_POOL_DEFAULT
     // 岗位匹配过滤默认关闭：它会给每个岗位多一次调用
     if (key === 'AI_SKIP_MISMATCH') return '0'
+    // 默认关闭思考：与后端 AI_DISABLE_THINKING=true 的既有行为保持一致
+    if (key === 'AI_THINKING_MODE') return 'off'
     return ''
   }
 
@@ -461,9 +471,11 @@ export function Settings(): React.ReactElement {
 
               <div style={{ fontSize: tokens.font.xs, color: tokens.color.textMuted }}>
                 当前模型：<strong>{usage.data.model || '未配置'}</strong>
-                {usage.data.thinkingSwitchSupported === false
-                  ? ' · 该接口不支持关闭思考参数，已自动跳过'
-                  : ' · 已尝试关闭思维链，避免为思考过程付费'}
+                {' · 思考模式：'}
+                <strong>
+                  {({ off: '关闭', auto: '自动', high: '深度' } as const)[usage.data.limits.thinkingMode ?? 'off']}
+                </strong>
+                {usage.data.thinkingSwitchSupported === false ? '（该接口不支持关闭思考，已自动跳过）' : ''}
                 {limits?.maxTokens ? ` · 单次输出上限 ${limits.maxTokens} tokens` : ''}
               </div>
 
@@ -497,6 +509,30 @@ export function Settings(): React.ReactElement {
                   />
                 </Field>
               </div>
+
+              <Field label="思考模式" hint="关闭最省钱；自动跟随模型默认；深度会让模型多思考，输出 token 与费用明显增加">
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {THINKING_MODES.map((mode) => {
+                    const active = (costForm['AI_THINKING_MODE'] ?? 'off') === mode.value
+                    return (
+                      <Button
+                        key={mode.value}
+                        tone={active ? 'primary' : 'ghost'}
+                        title={mode.hint}
+                        onClick={() => {
+                          setCostForm((prev) => ({ ...prev, AI_THINKING_MODE: mode.value }))
+                          setCostSaved(undefined)
+                        }}
+                      >
+                        {mode.label}
+                      </Button>
+                    )
+                  })}
+                  <span style={{ alignSelf: 'center', fontSize: tokens.font.xs, color: tokens.color.textMuted }}>
+                    {THINKING_MODES.find((mode) => mode.value === (costForm['AI_THINKING_MODE'] ?? 'off'))?.hint}
+                  </span>
+                </div>
+              </Field>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: tokens.font.sm }}>
                 <Toggle

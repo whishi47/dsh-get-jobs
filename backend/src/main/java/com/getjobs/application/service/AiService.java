@@ -53,6 +53,8 @@ public class AiService {
 
     /** 有些兼容层不认 thinking 参数，碰到一次 400 后就永久关闭该参数。 */
     private volatile boolean thinkingSwitchSupported = true;
+    /** 同理：不是所有 OpenAI 兼容层都支持 reasoning_effort。 */
+    private volatile boolean reasoningEffortSupported = true;
 
     /**
      * 发送 AI 请求（非流式）并返回回复内容。
@@ -97,22 +99,36 @@ public class AiService {
             requestData.put("messages", messages);
             if (maxTokens > 0) requestData.put("max_tokens", maxTokens);
         }
-        boolean thinkingDisabled = getBoolSetting("AI_DISABLE_THINKING", true) && thinkingSwitchSupported;
-        if (thinkingDisabled) {
+        // 思考模式：off（关闭，最省）/ auto（模型默认）/ high（深度思考，最贵）
+        String thinkingMode = getThinkingMode();
+        if ("off".equals(thinkingMode) && thinkingSwitchSupported) {
             JSONObject thinking = new JSONObject();
             thinking.put("type", "disabled");
             requestData.put("thinking", thinking);
+        } else if ("high".equals(thinkingMode) && reasoningEffortSupported) {
+            requestData.put("reasoning_effort", "high");
         }
 
         try {
             HttpResponse<String> response = post(endpoint, apiKey, requestData, timeoutInSeconds);
 
-            // 兼容层不支持 thinking 参数时，去掉它重试一次，之后不再携带
-            if (response.statusCode() == 400 && requestData.has("thinking")) {
-                thinkingSwitchSupported = false;
-                requestData.remove("thinking");
-                log.warn("当前模型不支持 thinking 开关，已自动去掉该参数并重试: {}", brief(response.body()));
-                response = post(endpoint, apiKey, requestData, timeoutInSeconds);
+            // 兼容层不支持思考参数时，去掉它重试一次，之后不再携带
+            if (response.statusCode() == 400) {
+                boolean retried = false;
+                if (requestData.has("thinking")) {
+                    thinkingSwitchSupported = false;
+                    requestData.remove("thinking");
+                    retried = true;
+                }
+                if (requestData.has("reasoning_effort")) {
+                    reasoningEffortSupported = false;
+                    requestData.remove("reasoning_effort");
+                    retried = true;
+                }
+                if (retried) {
+                    log.warn("当前模型不支持思考参数，已自动去掉并重试: {}", brief(response.body()));
+                    response = post(endpoint, apiKey, requestData, timeoutInSeconds);
+                }
             }
 
             if (response.statusCode() == 200) {
@@ -232,12 +248,28 @@ public class AiService {
         limits.put("daily", getIntSetting("AI_DAILY_LIMIT", DEFAULT_DAILY_LIMIT));
         limits.put("maxTokens", getIntSetting("AI_MAX_TOKENS", DEFAULT_MAX_TOKENS));
         limits.put("disableThinking", getBoolSetting("AI_DISABLE_THINKING", true));
+        limits.put("thinkingMode", getThinkingMode());
         limits.put("greetingPool", getBoolSetting("AI_GREETING_POOL", true));
         limits.put("greetingBatch", getIntSetting("AI_GREETING_BATCH", 10));
         body.put("limits", limits);
         body.put("model", configService.getConfigValue("MODEL"));
         body.put("thinkingSwitchSupported", thinkingSwitchSupported);
         return body;
+    }
+
+    /**
+     * 思考模式：{@code off} / {@code auto} / {@code high}。
+     *
+     * <p>没配 {@code AI_THINKING_MODE} 时，用旧的 {@code AI_DISABLE_THINKING} 布尔值做兼容迁移：
+     * true → off，false → auto。默认 off（省钱）。
+     */
+    public String getThinkingMode() {
+        String raw = configService.getConfigValue("AI_THINKING_MODE");
+        if (raw != null && !raw.isBlank()) {
+            String mode = raw.trim().toLowerCase(java.util.Locale.ROOT);
+            if (mode.equals("off") || mode.equals("auto") || mode.equals("high")) return mode;
+        }
+        return getBoolSetting("AI_DISABLE_THINKING", true) ? "off" : "auto";
     }
 
     /** 读整数配置；缺失或非法时回退默认值。 */
