@@ -112,6 +112,23 @@ export interface ResumeEvaluation {
   truncated?: boolean
 }
 
+/** Long image rendered from a resume and saved as the Boss resume image. */
+export interface ResumeImageResult {
+  image: {
+    width: number
+    height: number
+    format: string
+    fontSize?: number
+    size: number
+    contentType: string
+    previewUrl: string
+    truncated?: boolean
+    updatedAt?: number
+  }
+  meta?: Record<string, unknown>
+  savedToBoss: boolean
+}
+
 /** Metadata for the uploaded Boss resume image. */
 export interface ResumeImageMeta {
   exists: boolean
@@ -355,6 +372,38 @@ export class JobsApi {
       throw new ApiError(message || `评估失败（${response.status}）`)
     }
     return parsed as { evaluation: ResumeEvaluation; meta?: Record<string, unknown> }
+  }
+
+  /**
+   * Render a resume into a long image and save it as the Boss resume image
+   * (`POST /api/resume/image`, multipart).
+   *
+   * One call does both: the backend lays the extracted text out with Java2D and
+   * writes the result into the same storage the manual upload uses, so an
+   * enabled `发送图片简历` will send this image without a second upload.
+   */
+  async generateResumeImage(file: File): Promise<ResumeImageResult> {
+    const body = new FormData()
+    body.append('file', file)
+    let response: Response
+    try {
+      response = await fetch(`${this.baseUrl}/api/resume/image`, { method: 'POST', body })
+    } catch {
+      throw new ApiError('无法连接后端', '后端进程可能未启动')
+    }
+    const text = await response.text()
+    let parsed: unknown
+    try {
+      parsed = text ? JSON.parse(text) : undefined
+    } catch {
+      parsed = text
+    }
+    if (!response.ok) {
+      const record = (parsed ?? {}) as Record<string, unknown>
+      const message = typeof record['message'] === 'string' ? record['message'] : ''
+      throw new ApiError(message || `生成长图失败（${response.status}）`)
+    }
+    return parsed as ResumeImageResult
   }
 
   /** Upload or replace the Boss resume image (multipart, field name `file`). */

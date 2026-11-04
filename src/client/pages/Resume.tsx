@@ -7,7 +7,7 @@
  */
 import React, { useRef, useState } from 'react'
 
-import type { ResumeEvaluation } from '../api.js'
+import type { ResumeEvaluation, ResumeImageResult } from '../api.js'
 import { Badge, Button, Card, Empty, ErrorState, Field, Icon, Skeleton, Spacer, Textarea } from '../components.js'
 import { useBackend, useResource } from '../hooks.js'
 import { pageStyle, tokens } from '../theme.js'
@@ -60,6 +60,9 @@ export function Resume(): React.ReactElement {
   const [evaluation, setEvaluation] = useState<ResumeEvaluation | undefined>(undefined)
   const [evalError, setEvalError] = useState<string | undefined>(undefined)
   const [fileName, setFileName] = useState<string | undefined>(undefined)
+  const [imaging, setImaging] = useState(false)
+  const [imageResult, setImageResult] = useState<ResumeImageResult | undefined>(undefined)
+  const [imageError, setImageError] = useState<string | undefined>(undefined)
   const inputRef = useRef<HTMLInputElement>(null)
   // 评估要重新上传原始文件（后端不保存简历），所以这里留住最近一次选择
   const lastFile = useRef<File | undefined>(undefined)
@@ -156,6 +159,52 @@ export function Resume(): React.ReactElement {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
+  /**
+   * 把简历排成长图，并直接写成 Boss 图片简历。
+   *
+   * 一个请求做两件事：后端渲染 + 落盘到和手动上传同一个位置。所以生成完
+   * 投递时勾着「发送图片简历」就会发这张图，不需要用户再去投递配置页传一次。
+   */
+  async function generateImage(): Promise<void> {
+    if (!api || !lastFile.current) {
+      setImageError('请先导入一份简历，再生成。')
+      return
+    }
+    setImaging(true)
+    setImageError(undefined)
+    setNotice(undefined)
+    try {
+      const payload = await api.generateResumeImage(lastFile.current)
+      setImageResult(payload)
+      setNotice(`长图已生成并同步到 Boss 图片简历（${payload.image.width}×${payload.image.height}）`)
+    } catch (caught) {
+      setImageError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setImaging(false)
+    }
+  }
+
+  /** 下载长图到本地；跨域下 `a[download]` 会被忽略，所以先取 blob。 */
+  async function downloadLongImage(): Promise<void> {
+    if (!api || !imageResult) return
+    try {
+      const response = await fetch(`${api.baseUrl}${imageResult.image.previewUrl}`)
+      if (!response.ok) throw new Error(`下载失败（${response.status}）`)
+      const blob = await response.blob()
+      if (typeof URL.createObjectURL !== 'function') return
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `简历长图.${imageResult.image.format === 'jpg' ? 'jpg' : 'png'}`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (caught) {
+      setImageError(caught instanceof Error ? caught.message : String(caught))
+    }
+  }
+
   const notes = draft?.notes ?? []
   const evaluating = busy === 'evaluate'
 
@@ -178,7 +227,7 @@ export function Resume(): React.ReactElement {
         <Button
           icon="check"
           onClick={evaluate}
-          disabled={busy !== undefined || !api || !fileName}
+          disabled={busy !== undefined || imaging || !api || !fileName}
           title={fileName ? '让 AI 给这份简历打分' : '先导入简历'}
         >
           {evaluating ? 'AI 评估中…' : 'AI 评估打分'}
@@ -187,7 +236,7 @@ export function Resume(): React.ReactElement {
           tone="primary"
           icon="upload"
           onClick={() => inputRef.current?.click()}
-          disabled={busy !== undefined || !api}
+          disabled={busy !== undefined || imaging || !api}
         >
           {busy === 'parse' ? '解析中…' : '导入简历'}
         </Button>
@@ -407,9 +456,79 @@ export function Resume(): React.ReactElement {
         )}
       </Card>
 
+      <Card
+        title="简历长图"
+        actions={imageResult ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Button icon="refresh" onClick={generateImage} disabled={imaging || busy !== undefined}>
+              {imaging ? '生成中…' : '重新生成'}
+            </Button>
+            <Button tone="primary" icon="export" onClick={downloadLongImage} disabled={imaging}>
+              下载长图
+            </Button>
+          </div>
+        ) : undefined}
+        compact
+      >
+        {imaging ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.space(3) }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: tokens.font.sm, color: tokens.color.textMuted }}>
+              <Badge tone="accent">生成长图中</Badge>
+              <span>正在把简历排成 1080 宽的长图并写入 Boss 图片简历，通常 3-10 秒。</span>
+            </div>
+            <Skeleton height={220} />
+          </div>
+        ) : imageError ? (
+          <ErrorState message={imageError} onRetry={fileName ? generateImage : undefined} />
+        ) : !imageResult ? (
+          <Empty
+            title="还没有生成长图"
+            hint={fileName
+              ? `已就绪：${fileName}。生成后会自动写入 Boss 图片简历，投递时勾选「发送图片简历」就会发这张图。`
+              : '先导入一份简历，再生成。'}
+            action={(
+              <Button icon="upload" onClick={generateImage} disabled={!fileName || busy !== undefined}>
+                生成长图并同步到 Boss
+              </Button>
+            )}
+          />
+        ) : (
+          <div style={{ display: 'flex', gap: tokens.space(4), alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <img
+              src={`${api?.baseUrl ?? ''}${imageResult.image.previewUrl}?t=${imageResult.image.updatedAt ?? imageResult.image.size}`}
+              alt="简历长图预览"
+              style={{
+                width: 220,
+                maxHeight: 420,
+                objectFit: 'contain',
+                objectPosition: 'top',
+                border: `1px solid ${tokens.color.border}`,
+                borderRadius: tokens.radius.md,
+                background: '#ffffff',
+              }}
+            />
+            <div style={{ flex: '1 1 260px', minWidth: 240, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <Badge tone="success">已同步到 Boss 图片简历</Badge>
+                <Badge tone="neutral">{imageResult.image.width} × {imageResult.image.height}</Badge>
+                <Badge tone="neutral">{formatBytes(imageResult.image.size)}</Badge>
+                {imageResult.image.truncated ? <Badge tone="warning">过长已截断</Badge> : null}
+              </div>
+              <div style={{ fontSize: tokens.font.sm, color: tokens.color.textMuted }}>
+                投递时只要在「投递配置 → Boss 直聘」里勾选「发送图片简历」，就会发送这张长图；
+                不需要再去手动上传一次。
+              </div>
+              <div style={{ fontSize: tokens.font.xs, color: tokens.color.textFaint }}>
+                白底长图、手机查看清晰；如需调整文字，先在下方「解析草稿」里改，再回来重新生成。
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: tokens.font.xs, color: tokens.color.textFaint }}>
         <Icon name="alert" size={12} />
-        解析与评估都使用你在「设置」里配置的大模型接口；简历只抽纯文本、不保存原始文件，原文也不会进日志。
+        解析与评估使用你在「设置」里配置的大模型接口；长图由后端本地渲染，不上传第三方服务。简历只抽纯文本、不保存原始文件，原文也不会进日志。
       </div>
     </div>
   )
@@ -441,6 +560,14 @@ function ListBlock({
       </ul>
     </div>
   )
+}
+
+/** `1234567` → `1.2 MB`; used for the generated long image. */
+function formatBytes(value: number | undefined): string {
+  const bytes = Number(value ?? 0)
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function clampScore(value: number): number {

@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.getjobs.application.service.BossResumeImageService;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.LinkedHashMap;
@@ -34,13 +36,19 @@ public class ResumeController {
     private final ResumeTextExtractor extractor;
     private final ResumeDraftService draftService;
     private final ResumeEvaluateService evaluateService;
+    private final ResumeImageRenderer imageRenderer;
+    private final BossResumeImageService resumeImageService;
 
     public ResumeController(ResumeTextExtractor extractor,
                             ResumeDraftService draftService,
-                            ResumeEvaluateService evaluateService) {
+                            ResumeEvaluateService evaluateService,
+                            ResumeImageRenderer imageRenderer,
+                            BossResumeImageService resumeImageService) {
         this.extractor = extractor;
         this.draftService = draftService;
         this.evaluateService = evaluateService;
+        this.imageRenderer = imageRenderer;
+        this.resumeImageService = resumeImageService;
     }
 
     /** 上传并解析简历。 */
@@ -132,6 +140,68 @@ public class ResumeController {
         } catch (IllegalStateException error) {
             // 502：上游模型的问题，不是用户文件的问题
             return error(HttpStatus.BAD_GATEWAY, error.getMessage());
+        }
+    }
+
+    /**
+     * 把简历排成一张长图，并直接写入 Boss 图片简历。
+     *
+     * <p>"一站式"就体现在这里：生成完立刻调用 {@link BossResumeImageService#saveBytes}，
+     * 落盘位置和面板里手动上传的图片简历完全一致 —— 投递时 {@code sendImgResume} 打开就会发这张图，
+     * 不需要用户再手动去投递配置页传一次。
+     */
+    @PostMapping("/image")
+    public ResponseEntity<Map<String, Object>> image(
+            @RequestParam(value = "file", required = false) MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return error(HttpStatus.BAD_REQUEST, "没有收到文件，请在表单的 file 字段上传简历。");
+        }
+
+        ResumeTextExtractor.ExtractResult extracted;
+        try (InputStream stream = file.getInputStream()) {
+            extracted = extractor.extract(file.getOriginalFilename(), file.getSize(), stream);
+        } catch (ResumeTextExtractor.ScannedDocumentException error) {
+            return error(HttpStatus.UNPROCESSABLE_ENTITY, error.getMessage());
+        } catch (ResumeTextExtractor.UnsupportedResumeException error) {
+            return error(HttpStatus.BAD_REQUEST, error.getMessage());
+        } catch (IOException error) {
+            log.warn("读取上传文件失败: {}", error.getMessage());
+            return error(HttpStatus.BAD_REQUEST, "读取文件失败：" + error.getMessage());
+        }
+
+        try {
+            ResumeImageRenderer.Rendered rendered = imageRenderer.render(extracted.text());
+            BossResumeImageService.ResumeImageInfo info = resumeImageService.saveBytes(rendered.bytes(), "resume-render");
+
+            Map<String, Object> image = new LinkedHashMap<>();
+            image.put("width", rendered.width());
+            image.put("height", rendered.height());
+            image.put("format", rendered.format());
+            image.put("fontSize", rendered.fontSize());
+            image.put("size", info.size());
+            image.put("contentType", info.contentType());
+            image.put("previewUrl", BossResumeImageService.PREVIEW_URL);
+            image.put("truncated", rendered.truncated());
+            image.put("updatedAt", info.updatedAt());
+
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("format", extracted.format());
+            meta.put("pages", extracted.pages());
+            meta.put("chars", extracted.text().length());
+            meta.put("truncated", extracted.truncated());
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("image", image);
+            body.put("meta", meta);
+            body.put("savedToBoss", true);
+            return ResponseEntity.ok(body);
+        } catch (IllegalArgumentException error) {
+            return error(HttpStatus.BAD_REQUEST, error.getMessage());
+        } catch (IllegalStateException error) {
+            return error(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+        } catch (IOException error) {
+            log.warn("保存简历长图失败: {}", error.getMessage());
+            return error(HttpStatus.INTERNAL_SERVER_ERROR, "保存图片失败：" + error.getMessage());
         }
     }
 

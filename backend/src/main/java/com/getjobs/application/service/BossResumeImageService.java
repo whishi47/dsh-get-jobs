@@ -58,6 +58,39 @@ public class BossResumeImageService {
         }
     }
 
+    /**
+     * 保存后端自己生成的图片（简历长图）。
+     *
+     * <p>走和上传完全相同的落盘、格式探测、清理旧文件逻辑，所以"生成的图"和"手动上传的图"
+     * 在系统里是同一份数据 —— 投递时不需要区分来源。
+     */
+    public synchronized ResumeImageInfo saveBytes(byte[] data, String fileNameHint) throws IOException {
+        if (data == null || data.length == 0) {
+            throw new IllegalArgumentException("生成的图片为空");
+        }
+        if (data.length > MAX_FILE_SIZE) {
+            throw new IllegalArgumentException("图片大小不能超过 10MB");
+        }
+
+        Files.createDirectories(storageDirectory);
+        String prefix = (fileNameHint == null || fileNameHint.isBlank()) ? "resume-render-" : fileNameHint + "-";
+        Path temporaryFile = Files.createTempFile(storageDirectory, prefix, ".tmp");
+        try {
+            Files.write(temporaryFile, data);
+            if (Files.size(temporaryFile) > MAX_FILE_SIZE) {
+                throw new IllegalArgumentException("图片大小不能超过 10MB");
+            }
+
+            String extension = detectImageExtension(temporaryFile);
+            Path target = storageDirectory.resolve("resume." + extension);
+            moveReplacing(temporaryFile, target);
+            deleteOtherResumeImages(target);
+            return toInfo(target);
+        } finally {
+            Files.deleteIfExists(temporaryFile);
+        }
+    }
+
     public synchronized Optional<ResumeImageInfo> getCurrentImage() {
         return findCurrentImagePath().map(path -> {
             try {

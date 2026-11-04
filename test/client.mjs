@@ -857,6 +857,7 @@ console.log('\n[resume: AI evaluation, scoring UI and HTML report]')
   const originalAnchorClick = dom.window.HTMLAnchorElement.prototype.click
 
   let evaluateCalls = 0
+  let imageCalls = 0
   let exportBlob
   let exportName
 
@@ -888,6 +889,19 @@ console.log('\n[resume: AI evaluation, scoring UI and HTML report]')
           generatedAt: '2026-11-05 02:10',
         },
         meta: { format: 'pdf', chars: 1200 },
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify(body), json: async () => body }
+    }
+    if (target.includes('/api/resume/image') && init?.method === 'POST') {
+      imageCalls += 1
+      const body = {
+        image: {
+          width: 1080, height: 4200, format: 'png', fontSize: 26, size: 480000,
+          contentType: 'image/png', previewUrl: '/api/boss/config/resume-image/content',
+          truncated: false, updatedAt: 1762345678000,
+        },
+        meta: { format: 'pdf', chars: 1200 },
+        savedToBoss: true,
       }
       return { ok: true, status: 200, text: async () => JSON.stringify(body), json: async () => body }
     }
@@ -954,6 +968,23 @@ console.log('\n[resume: AI evaluation, scoring UI and HTML report]')
     await React.act(async () => { exportButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
     check('简历：导出文件名是 HTML', String(exportName ?? '').includes('.html'), String(exportName))
     check('简历：导出 MIME 是 text/html', String(exportBlob?.type ?? '').includes('text/html'), String(exportBlob?.type))
+  }
+
+  // 简历长图：生成后自动写入 Boss 图片简历（与手动上传共用同一份存储）
+  const imageButton = [...container.querySelectorAll('button')].find((node) => node.textContent?.includes('生成长图并同步到 Boss'))
+  check('简历：生成长图按钮存在', Boolean(imageButton))
+  check('简历：导入后长图按钮可用', imageButton?.disabled === false)
+  if (imageButton) {
+    await React.act(async () => {
+      imageButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+      await new Promise((done) => setTimeout(done, 180))
+    })
+    check('简历：调用 /api/resume/image', imageCalls === 1, `calls=${imageCalls}`)
+    check('简历：提示已同步到 Boss 图片简历', text().includes('已同步到 Boss 图片简历'), text().slice(0, 400))
+    check('简历：显示长图尺寸', text().includes('1080 × 4200'))
+    const preview = container.querySelector('img[alt="简历长图预览"]')
+    check('简历：显示长图预览', Boolean(preview) && String(preview.src).includes('/api/boss/config/resume-image/content'), String(preview?.src))
+    check('简历：出现下载长图按钮', [...container.querySelectorAll('button')].some((node) => node.textContent?.includes('下载长图')))
   }
 
   await React.act(async () => { root.unmount() })
