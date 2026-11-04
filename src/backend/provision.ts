@@ -70,7 +70,7 @@ export interface LaunchPlan {
  *
  * Order matters — a local jar always beats a download (no re-fetch for
  * developers), and gradle is the last resort because a cold build takes
- * minutes and needs the fork's source.
+ * minutes and needs the local backend sources.
  */
 export function planBackendLaunch(input: LaunchInput): LaunchPlan {
   if (input.jarPath) return { kind: 'jar' }

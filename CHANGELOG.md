@@ -12,6 +12,7 @@
 - 后端 jar / 数据库模板支持 **Gitee 镜像源回退**：GitHub 拉取缓慢或失败时自动切换 Gitee，缓解国内下载问题
 
 ### 🔧 Changed
+- 项目署名统一为 **mattan**，npm 元数据与 Release 说明的许可证表述与 **PolyForm Noncommercial 1.0.0** 对齐
 - 许可证由 MIT 调整为 **PolyForm Noncommercial 1.0.0**，明确禁止任何商业用途（仅供个人学习交流与辅助求职投递）
 
 ## [v0.1.0] - 2026-11-04

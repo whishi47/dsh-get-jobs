@@ -11,7 +11,8 @@
     "boss",
     "liepin"
   ],
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "mattan",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

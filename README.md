@@ -113,7 +113,7 @@ dsh plugin --profile web add "github:whishi47/dsh-get-jobs#master"
 ### 开发者模式
 
 ```bash
-dsh plugin --profile <profile> add H:/CodeHome_2/getjob/dsh-get-jobs
+dsh plugin --profile <profile> add /path/to/dsh-get-jobs   # 替换为本仓库的本地绝对路径
 dsh --profile <profile> --dump-config | grep dsh-get-jobs   # 期望看到 "# == dsh-get-jobs"
 ```
 
@@ -166,14 +166,14 @@ npm run check      # build + gates + test 一次跑完
 
 ## 🚀 发布后端（Release 流程）
 
-后端源码位于独立的后端工程（本地 `H:\CodeHome_2\getjob\get_jobs`）。每次后端有更新，按以下步骤重新打包并上传到两侧 Release：
+后端源码位于本仓库 [`backend/`](backend/README.md) 目录（纯 Java / Spring Boot 工程，不含前端）。每次后端有更新，按以下步骤重新打包并上传到两侧 Release：
 
-1. **打包**（在后端工程用 JDK 21 构建）：
+1. **打包**（JDK 21）：
    ```bash
-   cd H:/CodeHome_2/getjob/get_jobs
-   JAVA_HOME="$(ls -d /c/Program\ Files/Java/jdk-21*)" ./gradlew bootJar -x buildFrontend --no-daemon
+   cd backend
+   JAVA_HOME="$(ls -d /c/Program\ Files/Java/jdk-21*)" ./gradlew bootJar --no-daemon
    ```
-2. **同步产物**：将 `build/libs/get_jobs-*.jar` 复制为插件 `release-assets/backend.jar`；并基于后端 `db/getjobs.db` 重新生成仅含表结构的 `release-assets/getjobs.db.template`（清空所有业务数据，避免密钥 / 登录态泄露）。
+2. **同步产物**：将 `backend/build/libs/get_jobs-*.jar` 复制为 `release-assets/backend.jar`；`backend/assets/getjobs.db.template` 已只含表结构，直接复制为 `release-assets/getjobs.db.template` 即可（切勿用运行时的 `db/getjobs.db`，其中含 API Key 与登录态）。
 3. **上传 GitHub**：`gh release upload v0.1.0 release-assets/backend.jar release-assets/getjobs.db.template --clobber`
 4. **上传 Gitee**：在 Gitee 网页「发行版」关联 `v0.1.0` tag 并拖入上述两个文件（Gitee 附件上传需独立 token，当前走手动上传）。
 5. 如需新版本，打新 tag（如 `v0.1.1`）并同步更新 `CHANGELOG.md`。
