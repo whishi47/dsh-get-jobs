@@ -164,6 +164,24 @@ npm run check      # build + gates + test 一次跑完
 
 ---
 
+## 🚀 发布后端（Release 流程）
+
+后端源码位于独立的后端工程（本地 `H:\CodeHome_2\getjob\get_jobs`）。每次后端有更新，按以下步骤重新打包并上传到两侧 Release：
+
+1. **打包**（在后端工程用 JDK 21 构建）：
+   ```bash
+   cd H:/CodeHome_2/getjob/get_jobs
+   JAVA_HOME="$(ls -d /c/Program\ Files/Java/jdk-21*)" ./gradlew bootJar -x buildFrontend --no-daemon
+   ```
+2. **同步产物**：将 `build/libs/get_jobs-*.jar` 复制为插件 `release-assets/backend.jar`；并基于后端 `db/getjobs.db` 重新生成仅含表结构的 `release-assets/getjobs.db.template`（清空所有业务数据，避免密钥 / 登录态泄露）。
+3. **上传 GitHub**：`gh release upload v0.1.0 release-assets/backend.jar release-assets/getjobs.db.template --clobber`
+4. **上传 Gitee**：在 Gitee 网页「发行版」关联 `v0.1.0` tag 并拖入上述两个文件（Gitee 附件上传需独立 token，当前走手动上传）。
+5. 如需新版本，打新 tag（如 `v0.1.1`）并同步更新 `CHANGELOG.md`。
+
+> 插件运行时已内置 GitHub → Gitee 镜像回退，任一源可达即可完成首次自动下载。
+
+---
+
 ## 🤝 参与贡献
 
 欢迎 Issue 反馈与 Pull Request。流程与提交规范详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
