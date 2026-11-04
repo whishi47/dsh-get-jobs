@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### 📝 Documentation
+- README 重写为**大白话场景化中文文档**：先说清「这东西到底有什么用」、装好后的六个页面逐个解释、三步安装、首次使用清单、小白常见问题 FAQ、诚实的使用边界说明；徽章 Node 版本与 `engines` 对齐为 `>=20`
+- 新增完整英文文档 [`README.en.md`](README.en.md)，中英双语互相挂链
+- 新增项目图标 `assets/logo.png`（512×512 透明底）与 `assets/favicon.png`，README 中英双版顶部引用
+- GitHub 仓库描述与 `package.json` 描述改为「说人话」的用途说明，不再只堆技术名词
+
 ### 🐛 Fixed
 - **修复公开安装无法加载插件**：`package.json` 的 `main` / `exports` 指向 `lib/`，但 `lib/` 此前被 `.gitignore` 排除且从未入库，且缺少 `prepare` 构建钩子，导致从 GitHub / Gitee clone 安装后入口文件缺失。现采用双保险：① 预构建产物 `lib/` 随仓库发布；② 新增 `scripts/prepare.mjs` 安装兜底（产物齐全即跳过，仅在缺失时尝试构建，不依赖 devDependencies）。已用干净 clone 实测验证。
 

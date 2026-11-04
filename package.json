@@ -2,7 +2,7 @@
   "name": "dsh-get-jobs",
   "version": "0.1.0",
   "private": false,
-  "description": "求职投递自动化插件（Boss / 猎聘 / 51job / 智联）：一键启动后端、原生管理面板、岗位数据导出与简历驱动的 AI 配置。DeepSeek Harness 插件。",
+  "description": "投简历还在手动点「打招呼」？把 Boss直聘 / 猎聘 / 51job / 智联 的岗位筛选、AI 打招呼、自动投递与记录导出，做进 DeepSeek Harness 的一个可视化面板。一条命令装好，不用装数据库、不用编译、不用手动起后端。禁止商用。",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",
@@ -34,6 +34,11 @@
     "lib",
     "cordis.patch.yml",
     "README.md",
+    "README.en.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "assets/logo.png",
+    "assets/favicon.png",
     "LICENSE"
   ],
   "scripts": {
