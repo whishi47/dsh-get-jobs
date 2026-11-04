@@ -13,6 +13,8 @@ into one visual dashboard inside DeepSeek Harness.
 
 </div>
 
+![status](https://img.shields.io/badge/status-beta-orange.svg)
+![build](https://img.shields.io/badge/build-none-brightgreen.svg)
 ![PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-green.svg)
 ![JDK](https://img.shields.io/badge/JDK-21-orange.svg)
@@ -79,12 +81,74 @@ You do **not** write code. You do **not** install a database, compile Java, star
 
 ---
 
-## ⚠️ Before you use: read these four lines
+## ⚠️ Risk & disclaimer (read this first)
 
-1. 🚫 **No commercial use.** Licensed under [PolyForm Noncommercial 1.0.0](LICENSE). Personal learning, technical study, and assisting your own job search only.
-2. 📚 **Study & reference.** Code and docs are for learning. Redistribution must keep this notice and the author credit (mattan).
-3. 🛡️ **Respect platform rules.** Keep request frequency reasonable and follow each platform's terms. Automated actions may trigger anti-bot controls; **account risk is yours**.
-4. ⚖️ **You are responsible.** Any consequence of using this project (account restrictions, disputes) is borne by the user, not the author.
+> **This tool applies to jobs by driving a real browser and simulating mouse clicks and keystrokes. It cannot guarantee that your account will not be rate-limited, restricted, or banned. If that is a problem for you, please do not install or use it.**
+
+### Account risk — there is no "safe" setting
+
+- Every application is a real browser session: open the job page → click "Say hi" → type text → send an image resume. That is **simulated clicking**, not an official platform API.
+- Job platforms generally discourage automation. Possible consequences: more CAPTCHAs, rate-limited greetings, restricted features, temporary or permanent bans.
+- Lower frequency only lowers the probability; **it does not remove the risk**. There is no safe threshold.
+- If the account matters to you, **do not point any automation tool at it**.
+
+### No guarantees about outcomes
+
+- No guarantee of a successful application, a reply, an interview, or an offer.
+- No guarantee that job data is complete or accurate — it comes from scraping pages and can break when a platform redesigns its UI.
+- No guarantee that AI greetings, resume scores, or suggestions are correct or free of fabrication. **Review before sending.**
+
+### Responsibility & affiliation
+
+- Using this project means you accept these risks. Account penalties, data loss and disputes are your responsibility, not the author's.
+- This project is **not affiliated with, endorsed by, or partnered with** Boss Zhipin, Liepin, 51job or Zhaopin. Names and trademarks belong to their owners.
+- Follow platform terms and local law. **Commercial use is prohibited** (see [License](#-license)).
+
+---
+
+## 🔐 Security & privacy
+
+### Where data lives (all on your machine)
+
+| Data | Location | Note |
+| --- | --- | --- |
+| AI key & model config | `config` table in `db/getjobs.db` | **Plain text** — anyone who can read the file can read the key |
+| Applications & job data | The same SQLite file | Company names, job titles, salaries |
+| Image resume / long image | `data/boss/resume/resume.*` | Plain image files |
+| Logs | `target/logs/get-jobs.log` | Redacted, but may still contain job/company names |
+| Platform login state | `browser-data/` (Playwright profile) | **Equivalent to your account credentials** |
+
+> ⚠️ Never share `db/getjobs.db`, `browser-data/` or `data/`. Screenshot the config instead.
+
+### What goes over the network
+
+| Target | When | Content |
+| --- | --- | --- |
+| The AI endpoint **you** configure (default `api.deepseek.com`) | AI greetings / resume parsing / evaluation / polish | Resume text, job description, your intro |
+| Job platforms | Login, search, apply | Your account actions and chats |
+| GitHub Release | First launch | No user data |
+
+Nothing else is uploaded. No telemetry; the author cannot see your data.
+
+### Local service boundary
+
+- The backend binds `127.0.0.1:9527` only — not LAN, not the internet.
+- It has **no authentication**: any local process can call it (including reading plaintext config). That is a common trade-off for local tools; evaluate it if your machine runs untrusted software.
+- Never expose port 9527 through a reverse proxy or tunnel.
+
+### The source is plain text
+
+The plugin is plain TypeScript/JavaScript and the backend is plain Java. You can audit it — and so can anyone who can modify the files. Install only from this repository or the official release.
+
+---
+
+## 📌 Known limits
+
+- **Beta**: the version is `0.x`; config keys and endpoints may change. Check [CHANGELOG](CHANGELOG.md) before upgrading.
+- **Platform redesigns break it**: selectors and fields are page-dependent, not a stable API.
+- **The long image is reflowed text**, not a designed resume template; very long resumes shrink or truncate.
+- **AI output is advisory**: greetings, scores and suggestions can be wrong — read before sending.
+- **Verified mainly on Windows + JDK 21 + Node 20**; macOS/Linux not fully regression-tested.
 
 ---
 
