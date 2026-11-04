@@ -1,0 +1,33 @@
+# 构建产物
+build/
+target/
+.gradle/
+out/
+
+# 运行时数据库（含登录态 / API Key，绝不入库）
+db/
+*.db
+*.db-shm
+*.db-wal
+
+# 浏览器登录态与运行时数据
+browser-data/
+cookies/
+data/
+.playwright/
+ms-playwright/
+playwright-*
+.env
+*.log
+
+# 前端静态产物（本工程不提供管理页面）
+src/main/resources/dist/
+src/main/resources/static/
+src/main/resources/resume*
+
+# IDE / 系统
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
