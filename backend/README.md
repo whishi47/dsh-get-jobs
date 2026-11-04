@@ -1,7 +1,6 @@
 # Get Jobs Backend
 
 > Java / Spring Boot 后端服务：为 [dsh-get-jobs](../README.md) 插件提供求职自动投递能力的 HTTP API。
-> **本目录只包含后端工程源码，不含任何前端页面、GUI 或构建产物。**
 
 ## 这是什么
 
