@@ -38,6 +38,12 @@ public class DeliveryQuotaService {
     public static final String KEY_DAILY_TARGET = "DELIVERY_DAILY_TARGET";
     /** 允许投递的时间段，形如 {@code 9-23}；留空 = 全天。 */
     public static final String KEY_WORK_HOURS = "DELIVERY_WORK_HOURS";
+    /** 触发安全校验后自动冷却多少分钟；缺省 30，显式 0 = 不冷却。 */
+    public static final String KEY_COOLDOWN_MINUTES = "DELIVERY_COOLDOWN_MINUTES";
+    /** 冷却截止时间（ISO 本地时间），由后端写入，面板只读。 */
+    public static final String KEY_COOLDOWN_UNTIL = "DELIVERY_COOLDOWN_UNTIL";
+    /** 触发冷却的原因，面板展示用。 */
+    public static final String KEY_COOLDOWN_REASON = "DELIVERY_COOLDOWN_REASON";
 
     /** 平台 -> 该平台每日目标配置键。 */
     private static final Map<String, String> PLATFORM_TARGET_KEYS = Map.of(
@@ -215,6 +221,77 @@ public class DeliveryQuotaService {
         }
     }
 
+    // ---------------------------------------------------------------- 风控冷却
+
+    /** 冷却时长（分钟）；未配置时默认 30，显式 0 表示不冷却。 */
+    public int cooldownMinutes() {
+        String raw = configService.getConfigValue(KEY_COOLDOWN_MINUTES);
+        if (raw == null || raw.isBlank()) return 30;
+        try {
+            return Math.max(Integer.parseInt(raw.trim()), 0);
+        } catch (NumberFormatException error) {
+            return 30;
+        }
+    }
+
+    /** 冷却截止时间；没有冷却或格式非法时返回 null。 */
+    public LocalDateTime cooldownUntil() {
+        String raw = configService.getConfigValue(KEY_COOLDOWN_UNTIL);
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return LocalDateTime.parse(raw.trim());
+        } catch (RuntimeException error) {
+            return null;
+        }
+    }
+
+    /** 当前是否处于风控冷却期。 */
+    public boolean isCoolingDown() {
+        LocalDateTime until = cooldownUntil();
+        return until != null && LocalDateTime.now().isBefore(until);
+    }
+
+    /** 冷却还剩几分钟（向上取整）；不在冷却期返回 0。 */
+    public long cooldownRemainingMinutes() {
+        LocalDateTime until = cooldownUntil();
+        if (until == null) return 0;
+        long seconds = java.time.Duration.between(LocalDateTime.now(), until).getSeconds();
+        return seconds <= 0 ? 0 : (seconds + 59) / 60;
+    }
+
+    /**
+     * 触发一次冷却：在「现在 + cooldownMinutes」之前不再允许启动投递。
+     *
+     * <p>落地到 config 表而不是内存，是因为用户很可能在冷却期间重启后端 ——
+     * 内存状态一重启就没了，冷却也就白设了。
+     */
+    public void startCooldown(String reason) {
+        int minutes = cooldownMinutes();
+        if (minutes <= 0) return;
+        LocalDateTime until = LocalDateTime.now().plusMinutes(minutes).withNano(0);
+        Map<String, String> patch = new LinkedHashMap<>();
+        patch.put(KEY_COOLDOWN_UNTIL, until.toString());
+        patch.put(KEY_COOLDOWN_REASON, reason == null ? "" : reason);
+        try {
+            configService.batchUpdateConfigs(patch);
+            log.info("已进入风控冷却：{} 分钟（至 {}），原因：{}", minutes, until, reason);
+        } catch (RuntimeException error) {
+            log.warn("写入冷却时间失败: {}", error.getMessage());
+        }
+    }
+
+    /** 手动解除冷却。 */
+    public void clearCooldown() {
+        Map<String, String> patch = new LinkedHashMap<>();
+        patch.put(KEY_COOLDOWN_UNTIL, "");
+        patch.put(KEY_COOLDOWN_REASON, "");
+        try {
+            configService.batchUpdateConfigs(patch);
+        } catch (RuntimeException error) {
+            log.warn("清除冷却时间失败: {}", error.getMessage());
+        }
+    }
+
     /** 供面板展示的整体快照。 */
     public Map<String, Object> snapshot() {
         Map<String, Integer> delivered = todayByPlatform();
@@ -244,6 +321,14 @@ public class DeliveryQuotaService {
         value.put("platforms", platforms);
         value.put("workHours", workWindowLabel());
         value.put("inWorkHours", isWithinWorkHours());
+        Map<String, Object> cooldown = new LinkedHashMap<>();
+        cooldown.put("active", isCoolingDown());
+        cooldown.put("until", isCoolingDown() ? String.valueOf(cooldownUntil().withNano(0)) : "");
+        cooldown.put("remainingMinutes", cooldownRemainingMinutes());
+        cooldown.put("minutes", cooldownMinutes());
+        cooldown.put("reason", configService.getConfigValue(KEY_COOLDOWN_REASON) == null
+                ? "" : configService.getConfigValue(KEY_COOLDOWN_REASON));
+        value.put("cooldown", cooldown);
         value.put("serverTime", LocalDateTime.now().withNano(0).toString());
         return value;
     }

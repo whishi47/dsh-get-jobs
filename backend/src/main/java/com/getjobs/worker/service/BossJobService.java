@@ -54,6 +54,13 @@ public class BossJobService implements JobPlatformService {
                     reason + "，已自动暂停。可在「运行」页调整目标或重置今日计数"));
             return;
         }
+        if (quotaService.isCoolingDown()) {
+            long minutes = quotaService.cooldownRemainingMinutes();
+            log.info("拒绝启动：风控冷却中，还需 {} 分钟", minutes);
+            progressCallback.accept(JobProgressMessage.warning(PLATFORM, String.format(
+                    "风控冷却中，还需约 %d 分钟才能继续投递（上次触发安全校验）。可在「运行」页手动解除", minutes)));
+            return;
+        }
         if (!quotaService.isWithinWorkHours()) {
             String window = quotaService.workWindowLabel();
             log.info("拒绝启动：当前不在允许投递的时间段（{}）", window);
@@ -116,6 +123,13 @@ public class BossJobService implements JobPlatformService {
             // Playwright 连接，导航被打断报 net::ERR_ABORTED，整个任务直接挂掉。
             int deliveredCount = playwrightManager.callOnPlaywright(boss::execute);
 
+            // 撞上风控提前收工，也要说清楚原因
+            if (quotaService.isCoolingDown()) {
+                progressCallback.accept(JobProgressMessage.warning(PLATFORM, String.format(
+                        "本次发起%d个聊天，触发安全校验已暂停，%d 分钟内不再投递",
+                        deliveredCount, quotaService.cooldownRemainingMinutes())));
+                return;
+            }
             // 达到每日目标时给一条明确的收工提示，别让用户以为是自己点错了
             if (quotaService.isReached(PLATFORM)) {
                 progressCallback.accept(JobProgressMessage.success(PLATFORM, String.format(

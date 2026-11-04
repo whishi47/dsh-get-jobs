@@ -203,6 +203,7 @@ It is cached afterwards, so **later runs work offline**. Playwright's browser is
 | "Send image resume" checked but nothing sent | You must **upload** the image first in **Delivery Config** (a thumbnail appears when it worked). The checkbox alone does nothing |
 | Do I need MySQL / Redis? | No. One SQLite file, that's it |
 | Is my resume / key uploaded somewhere? | Data stays local; AI calls go to **your** configured endpoint. Never share the runtime `db/getjobs.db` — it may contain your config |
+| Why did it stop by itself? | Three cases: daily target reached, outside the allowed hours, or a platform security check (cooldown). The Run page always states the reason |
 | How do I cap how many I send per day? | On the **Run** page, set a total (e.g. 30) and/or a number per platform (e.g. Boss 20, Liepin 10; `0` means no per-platform cap). **Whichever limit is hit first wins** — it stops there. Changes apply immediately, no restart |
 | Will my account get banned? | There is a risk. Keep the frequency low, follow platform rules, do not use it for mass-applying on behalf of others |
 | I want to modify the code | See **Developer mode** below; clone and run `npm install --legacy-peer-deps` |
@@ -223,6 +224,9 @@ It is cached afterwards, so **later runs work offline**. Playwright's browser is
 | **Delivery** | Image resume | Upload a resume image and send it along with the greeting |
 | **Delivery** | Blacklist | Paginated company blacklist (10/page) + CSV export (with BOM, opens cleanly in Excel) |
 | **Delivery** | Daily target | Two-level quota: a combined total plus per-platform caps; **any one reaching its limit stops the run**. Optional working-hours window (e.g. `9-23`). Today's progress and a reset button live on the Run page |
+| **Delivery** | Risk cooldown | If the platform throws a security check, it cools down for N minutes (30 by default) and refuses to start; the Run page shows the countdown and lets you clear it |
+| **Settings** | Config backup | Export every setting as JSON (secrets blanked by default) and import it on another machine. Empty values never overwrite your existing key |
+| **Settings** | Daily report | Pushes a short summary (how many sent, how many tokens spent) to WeCom at a fixed time, or on demand |
 | **Data** | Job table | Normalized positions, single-platform or four-platform merge, streamed xlsx export |
 | **Resume** | Parse & draft | PDF / DOCX / TXT / MD → LLM config draft → preview & edit → write back |
 | **Panel** | Six native screens | Overview / Delivery Config / Run / Data / Resume / Settings — no iframe, no extra port, every screen scrolls |

@@ -120,7 +120,28 @@ export interface DeliveryQuota {
   /** 允许投递的时间段，如 `09:00 - 23:00`；空串表示全天。 */
   workHours: string
   inWorkHours: boolean
+  /** 触发安全校验后的冷却状态。 */
+  cooldown?: {
+    active: boolean
+    until: string
+    remainingMinutes: number
+    minutes: number
+    reason: string
+  }
   serverTime?: string
+}
+
+/** 每日汇报的设置与预览（`GET /api/delivery/report`）。 */
+export interface DailyReportState {
+  enabled: boolean
+  /** `HH:mm`。 */
+  time: string
+  lastSent: string
+  lastLabel: string
+  hookConfigured: boolean
+  pastTodayPoint: boolean
+  /** 后端拼好的汇报正文，面板直接展示。 */
+  preview: string
 }
 
 /** One scoring dimension in a resume evaluation. */
@@ -388,6 +409,22 @@ export class JobsApi {
   /** 清零今天的投递计数（目标配置保留）。 */
   resetDeliveryQuota(): Promise<unknown> {
     return this.call('POST', '/api/delivery/quota/reset')
+  }
+
+  /** 手动解除风控冷却（`POST /api/delivery/cooldown/clear`）。 */
+  clearCooldown(): Promise<unknown> {
+    return this.call('POST', '/api/delivery/cooldown/clear')
+  }
+
+  /** 每日汇报设置与预览文本。 */
+  async dailyReport(): Promise<DailyReportState> {
+    const raw = await this.call<Record<string, unknown>>('GET', '/api/delivery/report')
+    return (raw['data'] as DailyReportState | undefined) ?? (raw as unknown as DailyReportState)
+  }
+
+  /** 立即推送一次日报。 */
+  sendDailyReport(): Promise<unknown> {
+    return this.call('POST', '/api/delivery/report/send')
   }
 
   /**

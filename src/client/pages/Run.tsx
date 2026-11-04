@@ -58,7 +58,7 @@ export function Run(): React.ReactElement {
 
   const [quotaForm, setQuotaForm] = useState<Record<string, string> | undefined>(undefined)
   const [quotaNotice, setQuotaNotice] = useState<string | undefined>(undefined)
-  const [quotaPending, setQuotaPending] = useState<'save' | 'reset' | undefined>(undefined)
+  const [quotaPending, setQuotaPending] = useState<'save' | 'reset' | 'cooldown' | undefined>(undefined)
 
   // 表单初值来自后端配置；只加载一次，用户改过之后不再被轮询覆盖
   useEffect(() => {
@@ -182,6 +182,21 @@ export function Run(): React.ReactElement {
     }
   }
 
+  async function clearCooldown(): Promise<void> {
+    if (!api) return
+    setQuotaPending('cooldown')
+    setQuotaNotice(undefined)
+    try {
+      await api.clearCooldown()
+      setQuotaNotice('已解除风控冷却')
+      quota.reload()
+    } catch (caught) {
+      setQuotaNotice(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setQuotaPending(undefined)
+    }
+  }
+
   async function resetQuota(): Promise<void> {
     if (!api) return
     setQuotaPending('reset')
@@ -205,6 +220,8 @@ export function Run(): React.ReactElement {
   const dailyTarget = quotaData?.target ?? 0
   const quotaPercent = dailyTarget > 0 ? Math.min(Math.round((deliveredToday / dailyTarget) * 100), 100) : 0
   const quotaReached = quotaData?.reached === true
+  const cooldown = quotaData?.cooldown
+  const coolingDown = cooldown?.active === true
 
   return (
     <div style={pageStyle}>
@@ -365,6 +382,28 @@ export function Run(): React.ReactElement {
           合计与单平台两级配额 <strong>任一到达</strong> 就自动停投；改完目标立刻生效，不用重启后端。
         </div>
       </Card>
+
+      {coolingDown ? (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 12px',
+          borderRadius: tokens.radius.md,
+          border: `1px solid ${tokens.color.warning}`,
+          background: tokens.color.warningSoft,
+          fontSize: tokens.font.sm,
+        }}>
+          <Icon name="alert" size={14} />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            风控冷却中：还需约 {cooldown?.remainingMinutes ?? 0} 分钟
+            {cooldown?.reason ? `（${cooldown.reason}）` : ''}。期间点「开始投递」会被拒绝。
+          </span>
+          <Button onClick={clearCooldown} disabled={quotaPending !== undefined}>
+            {quotaPending === 'cooldown' ? '解除中…' : '解除冷却'}
+          </Button>
+        </div>
+      ) : null}
 
       {quotaReached ? (
         <div style={{

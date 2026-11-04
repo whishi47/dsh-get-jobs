@@ -67,6 +67,8 @@ public class Boss {
 
     /** 本次运行是否因为「今日投递已达目标」而提前收工。 */
     private boolean quotaStop = false;
+    /** 本次运行是否因为撞上安全校验（风控）而提前收工。 */
+    private boolean riskStop = false;
 
     /**
      * 池化生成的招呼语：一次批量生成多条，按岗位轮换使用。
@@ -128,6 +130,7 @@ public class Boss {
         // 每次投递重新计算「本次运行」的 AI 用量（今日累计不清零）
         aiService.resetRunUsage();
         quotaStop = false;
+        riskStop = false;
         // 今天已经投够了就直接收工，别让浏览器白开一趟
         if (deliveryQuotaService.isReached("boss")) {
             progressCallback.accept(quotaStopMessage(), 0, 0);
@@ -135,7 +138,7 @@ public class Boss {
             return 0;
         }
         for (String cityCode : config.getCityCode()) {
-            if (quotaStop) break;
+            if (quotaStop || riskStop) break;
             if (shouldStopCallback != null && Boolean.TRUE.equals(shouldStopCallback.get())) {
                 progressCallback.accept("用户取消投递", 0, 0);
                 break;
@@ -262,8 +265,8 @@ public class Boss {
     private void postJobByCity(String cityCode) {
         String searchUrl = getSearchUrl(cityCode);
         for (String keyword : config.getKeywords()) {
-            // 今天投够了就不再开新的关键词，省得每次都进列表页滚一遍
-            if (quotaStop) return;
+            // 今天投够了 / 撞上风控，就不再开新的关键词，省得每次都进列表页滚一遍
+            if (quotaStop || riskStop) return;
             // 检查是否需要停止
             if (shouldStopCallback.get()) {
                 progressCallback.accept("用户取消投递", 0, 0);
@@ -515,7 +518,16 @@ public class Boss {
                     if (progressCallback != null) {
                         progressCallback.accept("触发Boss安全校验，请在浏览器中手动完成验证", i + 1, count);
                     }
+                    // 记一次冷却：即便人工过完验证，也先歇一段时间再继续，
+                    // 连续触发通常意味着已经被盯上了
+                    deliveryQuotaService.startCooldown("Boss 安全校验");
                     waitForSliderVerify(page);
+                    riskStop = true;
+                    if (progressCallback != null) {
+                        progressCallback.accept("已触发安全校验，本次运行暂停（冷却 "
+                                + deliveryQuotaService.cooldownMinutes() + " 分钟）", i + 1, count);
+                    }
+                    return;
                 }
             }
             log.info("【{}】岗位已投递完毕！已投递岗位数量:{}", keyword, postCount);
@@ -1038,7 +1050,9 @@ public class Boss {
             if (progressCallback != null) {
                 progressCallback.accept("触发Boss安全校验，请手动完成验证", 0, 0);
             }
+            deliveryQuotaService.startCooldown("Boss 安全校验");
             waitForSliderVerify(page);
+            riskStop = true;
         }
     }
 

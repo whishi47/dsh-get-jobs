@@ -33,7 +33,8 @@ public class SettingsController {
 
     private static final Map<String, String> CATEGORY_LABELS = Map.of(
             "ai", "AI 接口",
-            "bot", "企业微信推送"
+            "bot", "企业微信推送",
+            "delivery", "投递配额与报表"
     );
 
     private final JdbcTemplate jdbc;

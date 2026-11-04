@@ -1006,6 +1006,7 @@ console.log('\n[daily delivery quota]')
   const originalWarn = console.error
   let savedConfig
   let resetCalled = 0
+  let clearCalled = 0
   let quotaBody = {
     success: true,
     data: {
@@ -1023,6 +1024,7 @@ console.log('\n[daily delivery quota]')
       },
       workHours: '09:00 - 23:00',
       inWorkHours: true,
+      cooldown: { active: false, until: '', remainingMinutes: 0, minutes: 30, reason: '' },
       serverTime: '2026-11-05T12:00:00',
     },
   }
@@ -1040,6 +1042,11 @@ console.log('\n[daily delivery quota]')
         plugin: 'dsh-get-jobs', baseUrl: 'http://127.0.0.1:9527',
         reachable: true, state: 'ready', managed: true, pid: 1, message: '后端在线',
       })
+    }
+    if (target.includes('/api/delivery/cooldown/clear') && init?.method === 'POST') {
+      clearCalled += 1
+      quotaBody.data.cooldown = { active: false, until: '', remainingMinutes: 0, minutes: 30, reason: '' }
+      return jsonOk({ success: true, message: '已解除风控冷却' })
     }
     if (target.includes('/api/delivery/quota/reset') && init?.method === 'POST') {
       resetCalled += 1
@@ -1137,9 +1144,183 @@ console.log('\n[daily delivery quota]')
   check('达目标后显示自动停投提示', text().includes('已达目标，自动停投'), text().slice(0, 400))
   check('达目标后提示会被后端拒绝', text().includes('会被后端直接拒绝'), text().slice(0, 500))
 
+  // 风控冷却：横幅 + 解除按钮
+  quotaBody.data.cooldown = { active: true, until: '2026-11-05T04:00:00', remainingMinutes: 24, minutes: 30, reason: 'Boss 安全校验' }
+  if (saveButton) {
+    await React.act(async () => {
+      saveButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+      await new Promise((done) => setTimeout(done, 90))
+    })
+  }
+  check('冷却中显示横幅', text().includes('风控冷却中：还需约 24 分钟'), text().slice(0, 500))
+  check('冷却横幅说明原因', text().includes('Boss 安全校验'), text().slice(0, 500))
+  const clearButton = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '解除冷却')
+  check('有解除冷却按钮', Boolean(clearButton))
+  if (clearButton) {
+    await React.act(async () => {
+      clearButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+      await new Promise((done) => setTimeout(done, 90))
+    })
+    check('解除调用了 /api/delivery/cooldown/clear', clearCalled === 1, String(clearCalled))
+    check('解除后给出提示', text().includes('已解除风控冷却'), text().slice(0, 400))
+  }
+
   await React.act(async () => { root.unmount() })
   container.remove()
   globalThis.fetch = originalFetch
+  console.error = originalWarn
+}
+
+console.log('\n[settings backup tab]')
+{
+  // 配置导入导出 + 每日汇报：换机迁移和「今天到底投了多少」都靠这一屏。
+  const originalFetch = globalThis.fetch
+  const originalWarn = console.error
+  const originalCreateObjectURL = URL.createObjectURL
+  const originalRevokeObjectURL = URL.revokeObjectURL
+  const originalAnchorClick = dom.window.HTMLAnchorElement.prototype.click
+  let exportBlob
+  let exportName
+  let postedConfig
+  let sendCalls = 0
+
+  URL.createObjectURL = (blob) => { exportBlob = blob; return 'blob:backup' }
+  URL.revokeObjectURL = () => {}
+  dom.window.HTMLAnchorElement.prototype.click = function () { exportName = this.download }
+
+  const jsonOk = (payload) => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify(payload),
+    json: async () => payload,
+  })
+  const configData = {
+    BASE_URL: 'https://api.deepseek.com',
+    API_KEY: 'sk-should-not-be-exported',
+    MODEL: 'deepseek-flash',
+    HOOK_URL: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret',
+    BOT_IS_SEND: '0',
+    DELIVERY_DAILY_TARGET: '30',
+    DAILY_REPORT_ENABLED: '0',
+    DAILY_REPORT_TIME: '21:30',
+    DELIVERY_COOLDOWN_MINUTES: '30',
+  }
+
+  globalThis.fetch = async (url, init) => {
+    const target = String(url)
+    if (target.includes('/dsh-get-jobs/health')) {
+      return jsonOk({
+        plugin: 'dsh-get-jobs', baseUrl: 'http://127.0.0.1:9527',
+        reachable: true, state: 'ready', managed: true, pid: 1, message: '后端在线',
+      })
+    }
+    if (target.includes('/api/delivery/report/send') && init?.method === 'POST') {
+      sendCalls += 1
+      return jsonOk({ success: true, data: { sent: true, message: '已推送到企业微信' }, message: '已推送到企业微信' })
+    }
+    if (target.includes('/api/delivery/report')) {
+      return jsonOk({
+        success: true,
+        data: {
+          enabled: false,
+          time: '21:30',
+          lastSent: '2026-11-04',
+          lastLabel: '2026-11-04',
+          hookConfigured: true,
+          pastTodayPoint: false,
+          preview: '📊 今日投递汇报 2026-11-05\n投递成功：12 份\nAI 调用：15 次 / 9000 tokens',
+        },
+      })
+    }
+    if (target.includes('/api/delivery/quota')) {
+      return jsonOk({
+        success: true,
+        data: {
+          day: '2026-11-05', target: 30, delivered: 12, remaining: 18, reached: false,
+          byPlatform: { boss: 12 }, platforms: {}, workHours: '', inWorkHours: true,
+          cooldown: { active: false, until: '', remainingMinutes: 0, minutes: 30, reason: '' },
+        },
+      })
+    }
+    if (target.includes('/api/config') && init?.method === 'POST') {
+      postedConfig = JSON.parse(String(init.body ?? '{}'))
+      return jsonOk({ success: true })
+    }
+    if (target.includes('/api/config')) return jsonOk({ success: true, data: configData })
+    if (target.includes('/status')) return jsonOk({ isRunning: false, isLoggedIn: true })
+    return { ok: false, status: 503, text: async () => 'unavailable', json: async () => ({}) }
+  }
+  dom.window.fetch = globalThis.fetch
+  console.error = () => {}
+
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  await React.act(async () => { root.render(React.createElement(mainEntry.component)) })
+
+  const settingsTab = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '设置')
+  await React.act(async () => { settingsTab.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+  await React.act(async () => { await new Promise((done) => setTimeout(done, 80)) })
+
+  const backupTab = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '备份与报表')
+  check('设置页有「备份与报表」子 tab', Boolean(backupTab))
+  await React.act(async () => { backupTab.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+  await React.act(async () => { await new Promise((done) => setTimeout(done, 100)) })
+
+  const text = () => container.textContent ?? ''
+  check('有配置备份卡片', text().includes('配置备份与迁移'))
+  check('有每日汇报卡片', text().includes('每日汇报'))
+  check('显示 webhook 已配置', text().includes('已配置'), text().slice(0, 300))
+  check('显示上次推送日期', text().includes('2026-11-04'), text().slice(0, 400))
+  check('汇报预览取自后端', text().includes('今日投递汇报'), text().slice(0, 500))
+
+  const exportButton = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '导出配置')
+  check('有导出配置按钮', Boolean(exportButton))
+  if (exportButton) {
+    await React.act(async () => { exportButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    check('导出文件名是 JSON', String(exportName ?? '').endsWith('.json'), String(exportName))
+    const exported = exportBlob ? JSON.parse(await exportBlob.text()) : {}
+    check('导出内容是配置 JSON', exported?.config?.MODEL === 'deepseek-flash', JSON.stringify(exported).slice(0, 200))
+    check('默认不导出 API Key', exported?.config?.API_KEY === '', JSON.stringify(exported?.config?.API_KEY))
+    check('默认不导出 webhook', exported?.config?.HOOK_URL === '', JSON.stringify(exported?.config?.HOOK_URL))
+    check('非敏感配置照常导出', exported?.config?.DELIVERY_DAILY_TARGET === '30', JSON.stringify(exported?.config?.DELIVERY_DAILY_TARGET))
+    check('导出后给出提示', text().includes('已导出'), text().slice(0, 400))
+  }
+
+  const reportToggle = [...container.querySelectorAll('button')].find((node) => node.getAttribute('aria-label') === '开启每日汇报')
+  check('有每日汇报开关', Boolean(reportToggle))
+  if (reportToggle) {
+    await React.act(async () => { reportToggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    const saveButton = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '保存设置')
+    check('有保存设置按钮', Boolean(saveButton))
+    if (saveButton) {
+      await React.act(async () => {
+        saveButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+        await new Promise((done) => setTimeout(done, 90))
+      })
+      check('日报开关写回 DAILY_REPORT_ENABLED', postedConfig?.DAILY_REPORT_ENABLED === '1', JSON.stringify(postedConfig))
+      check('推送时间随表单提交', typeof postedConfig?.DAILY_REPORT_TIME === 'string', JSON.stringify(postedConfig))
+      check('保存后给出提示', text().includes('日报设置已保存'), text().slice(0, 400))
+    }
+  }
+
+  const sendButton = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '立即推送一次')
+  check('有立即推送按钮', Boolean(sendButton))
+  if (sendButton) {
+    await React.act(async () => {
+      sendButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+      await new Promise((done) => setTimeout(done, 90))
+    })
+    check('立即推送调用了 /api/delivery/report/send', sendCalls === 1, String(sendCalls))
+    check('推送后有结果提示', text().includes('已推送到企业微信'), text().slice(0, 400))
+  }
+
+  await React.act(async () => { root.unmount() })
+  container.remove()
+  globalThis.fetch = originalFetch
+  URL.createObjectURL = originalCreateObjectURL
+  URL.revokeObjectURL = originalRevokeObjectURL
+  dom.window.HTMLAnchorElement.prototype.click = originalAnchorClick
   console.error = originalWarn
 }
 

@@ -9,7 +9,7 @@
  * min-height:0 + overflow:auto.
  * @module dsh-get-jobs/client/pages/settings
  */
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Badge, Button, Card, Empty, ErrorState, Field, Icon, Input, Skeleton, Spacer, Tabs, Textarea, Toggle } from '../components.js'
 import { useBackend, useResource } from '../hooks.js'
@@ -64,13 +64,14 @@ const THINKING_MODES: Array<{ value: 'off' | 'auto' | 'high'; label: string; hin
 const AI_POOL_DEFAULT = '1'
 
 /** Inner tabs — one per concern, each fits a screen without scrolling. */
-type SettingsTab = 'system' | 'ai' | 'blacklist' | 'custom'
+type SettingsTab = 'system' | 'ai' | 'blacklist' | 'custom' | 'backup'
 
 const TAB_ITEMS: Array<{ value: SettingsTab; label: string }> = [
   { value: 'system', label: '系统状态' },
   { value: 'ai', label: 'AI 设置' },
   { value: 'blacklist', label: '黑名单' },
   { value: 'custom', label: '自定义配置' },
+  { value: 'backup', label: '备份与报表' },
 ]
 
 /** One number tile in the AI usage card. */
@@ -242,6 +243,122 @@ export function Settings(): React.ReactElement {
       setError(caught instanceof Error ? caught.message : String(caught))
     } finally {
       setBusy(false)
+    }
+  }
+
+  // ------------------------------------------------------------ 备份与报表
+  const report = useResource(
+    async () => (api ? api.dailyReport() : undefined),
+    [backend.revision, api?.baseUrl],
+  )
+  const [backupNotice, setBackupNotice] = useState<string | undefined>(undefined)
+  const [includeSecrets, setIncludeSecrets] = useState(false)
+  const [reportForm, setReportForm] = useState<Record<string, string> | undefined>(undefined)
+  const [reportPending, setReportPending] = useState<'save' | 'send' | undefined>(undefined)
+  const importInput = useRef<HTMLInputElement | null>(null)
+
+  // 表单初值只在第一次拿到配置时填一次，之后用户的编辑不被轮询覆盖
+  useEffect(() => {
+    if (!appConfig.data) return
+    setReportForm((prev) => prev ?? {
+      DAILY_REPORT_ENABLED: appConfig.data?.['DAILY_REPORT_ENABLED'] ?? '0',
+      DAILY_REPORT_TIME: appConfig.data?.['DAILY_REPORT_TIME'] ?? '21:30',
+      DELIVERY_COOLDOWN_MINUTES: appConfig.data?.['DELIVERY_COOLDOWN_MINUTES'] ?? '30',
+    })
+  }, [appConfig.data])
+
+  /** 敏感键：导出时可选是否打码。 */
+  function isSecretKey(key: string): boolean {
+    return /(API_KEY|HOOK_URL|TOKEN|SECRET)/i.test(key)
+  }
+
+  /** 导出全部配置为 JSON，方便换机 / 备份。 */
+  function exportConfig(): void {
+    if (!appConfig.data) return
+    const config: Record<string, string> = {}
+    for (const [key, value] of Object.entries(appConfig.data)) {
+      config[key] = isSecretKey(key) && !includeSecrets ? '' : value
+    }
+    const payload = {
+      plugin: 'dsh-get-jobs',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      includeSecrets,
+      config,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `dsh-get-jobs-配置-${new Date().toISOString().slice(0, 10)}.json`
+    anchor.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1_000)
+    setBackupNotice(includeSecrets ? '已导出（含 API Key 等敏感配置，注意保管）' : '已导出（敏感配置已留空）')
+  }
+
+  /**
+   * 导入配置：只覆盖文件里有的键，空值跳过。
+   *
+   * <p>跳过空值是有意的——用「不含敏感项」的备份文件恢复时，绝不能把已有的
+   * API Key 清空，否则用户会以为导入成功、结果 AI 全挂。
+   */
+  async function importConfig(file: File): Promise<void> {
+    if (!api) return
+    setBackupNotice(undefined)
+    try {
+      const parsed = JSON.parse(await file.text()) as { config?: Record<string, unknown> }
+      const raw = (parsed.config ?? parsed) as Record<string, unknown>
+      const patch: Record<string, string> = {}
+      for (const [key, value] of Object.entries(raw)) {
+        if (!key || key.startsWith('_')) continue
+        if (value === null || value === undefined) continue
+        if (typeof value === 'object') continue
+        const text = String(value)
+        if (text === '') continue
+        patch[key] = text
+      }
+      const count = Object.keys(patch).length
+      if (count === 0) {
+        setBackupNotice('导入失败：文件里没有可用的配置项')
+        return
+      }
+      await api.saveAppConfig(patch)
+      appConfig.reload()
+      report.reload()
+      setBackupNotice(`已导入 ${count} 项配置（空值已跳过，不会清掉你已有的 Key）`)
+    } catch (caught) {
+      setBackupNotice(`导入失败：${caught instanceof Error ? caught.message : String(caught)}`)
+    }
+  }
+
+  async function saveReport(): Promise<void> {
+    if (!api || !reportForm) return
+    setReportPending('save')
+    setBackupNotice(undefined)
+    try {
+      await api.saveAppConfig(reportForm)
+      setBackupNotice('日报设置已保存，到点会自动推送')
+      report.reload()
+      appConfig.reload()
+    } catch (caught) {
+      setBackupNotice(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setReportPending(undefined)
+    }
+  }
+
+  async function sendReport(): Promise<void> {
+    if (!api) return
+    setReportPending('send')
+    setBackupNotice(undefined)
+    try {
+      const raw = await api.sendDailyReport() as { message?: string; data?: { message?: string } }
+      setBackupNotice(String(raw?.message ?? raw?.data?.message ?? '已发送'))
+      report.reload()
+    } catch (caught) {
+      setBackupNotice(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setReportPending(undefined)
     }
   }
 
@@ -812,6 +929,95 @@ export function Settings(): React.ReactElement {
     gap: tokens.space(3),
   }
 
+  function renderBackup(): React.ReactNode {
+    const info = report.data
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.space(3) }}>
+        <Card title="配置备份与迁移">
+          <div style={{ fontSize: tokens.font.sm, color: tokens.color.textMuted }}>
+            导出一个 JSON 文件，里面是投递条件、AI 设置、每日目标等全部配置项；换电脑或重装时导入即可恢复。
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: tokens.font.sm }}>
+            <Toggle checked={includeSecrets} label="导出时包含 API Key / webhook" onChange={setIncludeSecrets} />
+            <span style={{ color: tokens.color.textMuted }}>默认不含敏感项；含 Key 的文件请自己保管好</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button icon="export" onClick={exportConfig} disabled={!api || !appConfig.data}>导出配置</Button>
+            <Button icon="upload" onClick={() => importInput.current?.click()} disabled={!api}>导入配置</Button>
+            <input
+              ref={importInput}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: 'none' }}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file) void importConfig(file)
+              }}
+            />
+          </div>
+          {backupNotice ? (
+            <div style={{ fontSize: tokens.font.xs, color: tokens.color.textMuted }}>{backupNotice}</div>
+          ) : null}
+        </Card>
+
+        <Card
+          title="每日汇报"
+          actions={<Badge tone={info?.enabled ? 'success' : 'neutral'}>{info?.enabled ? `每天 ${info.time}` : '未开启'}</Badge>}
+        >
+          <div style={{ fontSize: tokens.font.sm, color: tokens.color.textMuted }}>
+            到点把「今天投了多少、AI 花了多少」推送到企业微信。和企业微信投递通知是两个独立开关。
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: tokens.font.sm }}>
+            <Toggle
+              checked={(reportForm?.['DAILY_REPORT_ENABLED'] ?? '0') === '1'}
+              label="开启每日汇报"
+              onChange={(next) => setReportForm((prev) => ({ ...(prev ?? {}), DAILY_REPORT_ENABLED: next ? '1' : '0' }))}
+            />
+            <span style={{ color: tokens.color.textMuted }}>需要先在「AI 设置 → 接口与推送」里填企业微信 webhook</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="推送时间" hint="24 小时制，如 21:30">
+              <Input
+                value={reportForm?.['DAILY_REPORT_TIME'] ?? ''}
+                placeholder="21:30"
+                onChange={(event) => setReportForm((prev) => ({ ...(prev ?? {}), DAILY_REPORT_TIME: event.target.value }))}
+              />
+            </Field>
+            <Field label="触发安全校验后冷却" hint="分钟；填 0 = 不冷却">
+              <Input
+                value={reportForm?.['DELIVERY_COOLDOWN_MINUTES'] ?? ''}
+                placeholder="30"
+                inputMode="numeric"
+                onChange={(event) => setReportForm((prev) => ({ ...(prev ?? {}), DELIVERY_COOLDOWN_MINUTES: event.target.value }))}
+              />
+            </Field>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: tokens.font.xs, color: tokens.color.textMuted }}>
+            <span>上次推送：<strong>{info?.lastLabel ?? '—'}</strong></span>
+            <span>webhook：<strong>{info?.hookConfigured ? '已配置' : '未配置'}</strong></span>
+          </div>
+
+          <Field label="汇报预览" hint="实际推送的内容，数字来自今天的投递与 AI 用量">
+            <Textarea readOnly value={info?.preview ?? '（后端未启动，暂时取不到）'} rows={5} />
+          </Field>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button tone="primary" onClick={saveReport} disabled={!api || !reportForm || reportPending !== undefined}>
+              {reportPending === 'save' ? '保存中…' : '保存设置'}
+            </Button>
+            <Button icon="check" onClick={sendReport} disabled={!api || reportPending !== undefined}>
+              {reportPending === 'send' ? '推送中…' : '立即推送一次'}
+            </Button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div style={pageStyle}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -829,6 +1035,7 @@ export function Settings(): React.ReactElement {
         {activeTab === 'ai' ? renderAi() : null}
         {activeTab === 'blacklist' ? renderBlacklist() : null}
         {activeTab === 'custom' ? renderCustom() : null}
+        {activeTab === 'backup' ? renderBackup() : null}
       </div>
     </div>
   )
