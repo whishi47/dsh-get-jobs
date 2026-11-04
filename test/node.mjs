@@ -27,10 +27,11 @@ function check(label, condition, detail) {
 
 console.log('\n[redaction]')
 {
-  const text = 'API_KEY=sk-removed-please-rotate HOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=00000000-0000'
+  // 只用明显的假值：测试夹带真实密钥会把凭据带进公开仓库
+  const text = 'API_KEY=sk-test-this-is-not-a-real-key HOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-webhook-not-real'
   const masked = redact(text)
-  check('掩码 API Key', !masked.includes('cc55b242'), masked)
-  check('掩码 webhook key', !masked.includes('22e250b0'), masked)
+  check('掩码 API Key', !masked.includes('this-is-not-a-real-key'), masked)
+  check('掩码 webhook key', !masked.includes('webhook-not-real'), masked)
   check('保留上下文', masked.includes('API_KEY='), masked)
 }
 
