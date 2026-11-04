@@ -171,14 +171,14 @@ npm run check      # build + gates + test 一次跑完
 
 ## 🚀 发布后端（Release 流程）
 
-后端源码位于独立的 `get_jobs` 仓库（纯 Java / Spring Boot 工程，不含前端）。每次后端有更新，按以下步骤重新打包并发布：
+后端源码随本仓库 [`backend/`](backend/README.md) 目录提供（纯 Java / Spring Boot，JDK 21）。每次后端有更新，按以下步骤重新打包并发布：
 
-1. **打包**（JDK 21，在 `get_jobs` 仓库执行，跳过前端）：
+1. **打包**（JDK 21）：
    ```bash
-   cd <get_jobs>
-   JAVA_HOME="$(ls -d /c/Program\ Files/Java/jdk-21*)" ./gradlew bootJar -x buildFrontend --no-daemon
+   cd backend
+   ./gradlew bootJar --no-daemon
    ```
-2. **同步产物**：将 `get_jobs/build/libs/get_jobs-*.jar` 复制为 `release-assets/backend.jar`；并将**清空数据后**的 `getjobs.db` 复制为 `release-assets/getjobs.db.template`（切勿用运行时的 `db/getjobs.db`，其中含 API Key 与登录态）。
+2. **同步产物**：将 `backend/build/libs/*.jar` 复制为 `release-assets/backend.jar`；`backend/assets/getjobs.db.template` 已只含表结构，直接复制为 `release-assets/getjobs.db.template` 即可（切勿用运行时的 `db/getjobs.db`，其中含 API Key 与登录态）。
 3. **上传 GitHub Release**：`gh release upload v0.1.0 release-assets/backend.jar release-assets/getjobs.db.template --clobber`
 4. 如需新版本，打新 tag（如 `v0.1.1`）并同步更新 `CHANGELOG.md`。
 
