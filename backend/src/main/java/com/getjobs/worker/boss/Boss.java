@@ -1721,6 +1721,11 @@ public class Boss {
         if (!aiService.getBoolSetting("AI_GREETING_POOL", true)) {
             return generateAiMessagePerJob(keyword, jobName, jd);
         }
+        // 可选：每岗先问一次「匹配吗」。默认关闭（省钱），开启后调用次数随投递数增长
+        if (aiService.getBoolSetting("AI_SKIP_MISMATCH", false)) {
+            AiMessageDecision match = judgeJobMatch(jobName, jd);
+            if (match.skipCurrentJob()) return match;
+        }
         String cacheKey = greetingCacheKey(jobName, jd);
         String cached = aiGreetingCache.get(cacheKey);
         if (cached != null) {
@@ -1804,6 +1809,37 @@ public class Boss {
     private static String truncate(String value, int max) {
         if (value == null) return "";
         return value.length() > max ? value.substring(0, max) + "…" : value;
+    }
+
+    /**
+     * 池化模式下的「岗位匹配过滤」：每个岗位先问一次模型 yes/no，不合适就不投。
+     *
+     * <p>默认关闭 —— 这个判断本身要花钱，而且调用次数会随投递数线性增长。
+     * 但它的成本远低于逐岗生成招呼语：输入截断到 1200 字 JD，输出只有 1-2 个 token，
+     * 单次大约几百 token；想要"AI 帮忙筛岗"的用户可以打开它。
+     *
+     * <p>判断失败（预算用尽 / 接口报错）时选择继续投递，而不是跳过 ——
+     * 不能因为省钱把整批岗位全停了。
+     */
+    private AiMessageDecision judgeJobMatch(String jobName, String jd) {
+        AiEntity aiConfig = aiService.getAiConfig();
+        String introduce = (aiConfig != null && aiConfig.getIntroduce() != null) ? aiConfig.getIntroduce() : "";
+        String prompt = "请判断下面这个岗位是否适合这位求职者。只输出 yes 或 no，不要解释。\n"
+                + "求职者介绍：" + truncate(introduce, 400) + "\n"
+                + "岗位名称：" + (jobName == null ? "" : jobName) + "\n"
+                + "岗位描述：" + truncate(jd, 1200);
+        try {
+            String result = aiService.sendRequest(prompt);
+            String normalized = result == null ? "" : result.strip().toLowerCase(Locale.ROOT);
+            if (normalized.startsWith("no") || normalized.startsWith("false") || normalized.contains("不匹配")) {
+                log.info("AI 判断岗位不匹配，跳过投递 | 岗位：{}", jobName);
+                return new AiMessageDecision(true, null);
+            }
+            return new AiMessageDecision(false, null);
+        } catch (Exception error) {
+            log.warn("AI 岗位匹配判断失败，继续投递: {}", error.getMessage());
+            return new AiMessageDecision(false, null);
+        }
     }
 
     /** 旧的"每个岗位单独生成"路径，保留给 AI_GREETING_POOL=false 的场景。 */

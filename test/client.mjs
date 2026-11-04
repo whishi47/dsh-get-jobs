@@ -614,6 +614,7 @@ console.log('\n[settings: editable config, blacklist pagination & export]')
   check('设置：今日 token 可读', text().includes('9,000'), text().slice(0, 400))
   check('设置：预算字段可编辑', text().includes('单次运行调用上限') && text().includes('每日调用上限') && text().includes('单次输出 max_tokens'))
   check('设置：招呼语池化开关', text().includes('批量生成招呼语'))
+  check('设置：岗位匹配过滤开关', text().includes('AI 岗位匹配过滤'))
   check('设置：推荐模型一键填入', [...container.querySelectorAll('button')].some((node) => node.textContent?.trim() === '用推荐'))
 
   // 自定义键可见性需要切到「自定义配置」子 tab

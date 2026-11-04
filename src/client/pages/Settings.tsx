@@ -49,6 +49,7 @@ const AI_COST_KEYS = [
   'AI_MAX_TOKENS',
   'AI_GREETING_BATCH',
   'AI_GREETING_POOL',
+  'AI_SKIP_MISMATCH',
 ] as const
 
 /** 池化开关缺省为开：老库里没有这个键时也要按省钱模式跑。 */
@@ -200,7 +201,10 @@ export function Settings(): React.ReactElement {
   function costBaseline(key: string): string {
     const stored = appConfig.data?.[key]
     if (stored !== undefined && stored !== '') return stored
-    return key === 'AI_GREETING_POOL' ? AI_POOL_DEFAULT : ''
+    if (key === 'AI_GREETING_POOL') return AI_POOL_DEFAULT
+    // 岗位匹配过滤默认关闭：它会给每个岗位多一次调用
+    if (key === 'AI_SKIP_MISMATCH') return '0'
+    return ''
   }
 
   useEffect(() => {
@@ -506,6 +510,21 @@ export function Settings(): React.ReactElement {
                 <span style={{ fontWeight: 600 }}>批量生成招呼语</span>
                 <span style={{ color: tokens.color.textMuted }}>
                   开启后一批岗位共用一组招呼语，调用次数从「每岗一次」降到「每批一次」；关闭则每岗单独生成（更个性化，也更费钱）
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: tokens.font.sm }}>
+                <Toggle
+                  checked={(costForm['AI_SKIP_MISMATCH'] ?? '0') === '1'}
+                  label="AI 岗位匹配过滤"
+                  onChange={(next) => {
+                    setCostForm((prev) => ({ ...prev, AI_SKIP_MISMATCH: next ? '1' : '0' }))
+                    setCostSaved(undefined)
+                  }}
+                />
+                <span style={{ fontWeight: 600 }}>AI 岗位匹配过滤</span>
+                <span style={{ color: tokens.color.textMuted }}>
+                  开启后每个岗位先花一次很小的调用问模型「匹配吗」，不匹配就不投；调用次数会随投递数增加，按需开启
                 </span>
               </div>
             </div>
