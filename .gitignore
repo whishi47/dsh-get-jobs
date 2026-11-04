@@ -25,3 +25,6 @@ Thumbs.db
 
 # 文档（内部资料，不随仓库发布）
 docs/
+
+# 发布资产（jar / db 模板，作为 GitHub Release 资产发布，不入库）
+release-assets/

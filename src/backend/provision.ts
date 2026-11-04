@@ -28,6 +28,9 @@ export function defaultDataDir(): string {
 /** SQLite template shipped with the project; override via the `dbUrl` config. */
 export const DEFAULT_DB_URL = 'https://ghproxy.net/https://github.com/whishi47/dsh-get-jobs/releases/latest/download/getjobs.db.template'
 
+/** Backend jar shipped as a GitHub release asset; override via the `jarUrl` config. */
+export const DEFAULT_JAR_URL = 'https://ghproxy.net/https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar'
+
 /** Hard cap so a misconfigured URL cannot fill the disk. */
 export const JAR_MAX_BYTES = 600 * 1024 * 1024
 export const DB_MAX_BYTES = 64 * 1024 * 1024
