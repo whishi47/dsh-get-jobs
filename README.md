@@ -106,7 +106,7 @@ dsh plugin --profile web add "github:whishi47/dsh-get-jobs#master"
     jarUrl: 'https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar'
 ```
 
-> 🌏 国内网络若 GitHub 拉取缓慢或失败，插件会**自动回退到 Gitee 镜像源**；如需强制走 Gitee，可将 `jarUrl` 显式设为 `https://gitee.com/qiu-gaohua/dsh-get-jobs/releases/download/v0.1.0/backend.jar`。
+> 🌏 国内网络若 GitHub 直连缓慢或失败，插件会**依次尝试多个国内 GitHub 镜像**（默认 `ghproxy.net` 为首，自动回退至 `mirror.ghproxy.com` 等），任一可达即可完成首次自动下载。
 
 首次启动流程：下载 jar → 下载 SQLite 模板库 → `java -jar` 拉起 → 面板自动转「就绪」。求职功能还需 Playwright 浏览器（后端首次投递时自动下载）。
 
@@ -138,7 +138,7 @@ dsh --profile <profile> --dump-config | grep dsh-get-jobs   # 期望看到 "# ==
 | 字段 | 默认 | 说明 |
 | --- | --- | --- |
 | `baseUrl` | `http://127.0.0.1:9527` | 后端地址 |
-| `jarUrl` | GitHub Release `backend.jar`（失败回退 Gitee 镜像） | 后端 jar 下载直链；默认先试 GitHub，拉不动自动回退 Gitee；无本地 jar 时首次启动自动下载并缓存 |
+| `jarUrl` | `ghproxy.net` 镜像的 GitHub Release `backend.jar` | 后端 jar 下载直链；默认依次尝试多个国内 GitHub 镜像，任一可达即下载并缓存；无本地 jar 时首次启动自动拉取 |
 | `dbUrl` | 默认模板库 | SQLite 模板下载直链（工作目录缺 `db/getjobs.db` 时自动下载） |
 | `dataDir` | `<DSH_HOME\|~>/.dsh/get-jobs` | 下载产物（jar/db）存放目录 |
 | `jarPath` | 自动 | 本地 jar 直指；存在时优先于 `jarUrl` |
@@ -166,19 +166,18 @@ npm run check      # build + gates + test 一次跑完
 
 ## 🚀 发布后端（Release 流程）
 
-后端源码位于本仓库 [`backend/`](backend/README.md) 目录（纯 Java / Spring Boot 工程，不含前端）。每次后端有更新，按以下步骤重新打包并上传到两侧 Release：
+后端源码位于独立的 `get_jobs` 仓库（纯 Java / Spring Boot 工程，不含前端）。每次后端有更新，按以下步骤重新打包并发布：
 
-1. **打包**（JDK 21）：
+1. **打包**（JDK 21，在 `get_jobs` 仓库执行，跳过前端）：
    ```bash
-   cd backend
-   JAVA_HOME="$(ls -d /c/Program\ Files/Java/jdk-21*)" ./gradlew bootJar --no-daemon
+   cd <get_jobs>
+   JAVA_HOME="$(ls -d /c/Program\ Files/Java/jdk-21*)" ./gradlew bootJar -x buildFrontend --no-daemon
    ```
-2. **同步产物**：将 `backend/build/libs/get_jobs-*.jar` 复制为 `release-assets/backend.jar`；`backend/assets/getjobs.db.template` 已只含表结构，直接复制为 `release-assets/getjobs.db.template` 即可（切勿用运行时的 `db/getjobs.db`，其中含 API Key 与登录态）。
-3. **上传 GitHub**：`gh release upload v0.1.0 release-assets/backend.jar release-assets/getjobs.db.template --clobber`
-4. **上传 Gitee**：在 Gitee 网页「发行版」关联 `v0.1.0` tag 并拖入上述两个文件（Gitee 附件上传需独立 token，当前走手动上传）。
-5. 如需新版本，打新 tag（如 `v0.1.1`）并同步更新 `CHANGELOG.md`。
+2. **同步产物**：将 `get_jobs/build/libs/get_jobs-*.jar` 复制为 `release-assets/backend.jar`；并将**清空数据后**的 `getjobs.db` 复制为 `release-assets/getjobs.db.template`（切勿用运行时的 `db/getjobs.db`，其中含 API Key 与登录态）。
+3. **上传 GitHub Release**：`gh release upload v0.1.0 release-assets/backend.jar release-assets/getjobs.db.template --clobber`
+4. 如需新版本，打新 tag（如 `v0.1.1`）并同步更新 `CHANGELOG.md`。
 
-> 插件运行时已内置 GitHub → Gitee 镜像回退，任一源可达即可完成首次自动下载。
+> 插件运行时已内置**多个国内 GitHub 镜像自动回退**（默认 `ghproxy.net` 为首），无需 Gitee；GitHub Release 可达其一即可完成首次自动下载。
 
 ---
 

@@ -25,19 +25,25 @@ export function defaultDataDir(): string {
   return join(home, 'get-jobs')
 }
 
-/** SQLite template shipped with the project; override via the `dbUrl` config. */
-export const DEFAULT_DB_URL = 'https://ghproxy.net/https://github.com/whishi47/dsh-get-jobs/releases/latest/download/getjobs.db.template'
-
-/** Backend jar shipped as a GitHub release asset; override via the `jarUrl` config. */
-export const DEFAULT_JAR_URL = 'https://ghproxy.net/https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar'
-
 /**
- * Gitee 镜像源：GitHub 拉不动（国内网络/代理问题）时作为备选。
- * 注意 Gitee 用具体 tag 路径，不使用 `latest`（Gitee 无此重定向）。
- * 需 Gitee Release `v0.1.0` 已上传对应资产后方能生效。
+ * 后端 jar 的下载候选源（按优先级尝试，前一个失败自动试下一个）。
+ * 全部为国内可直连的 GitHub 镜像、免鉴权；首项是默认 `jarUrl`。
+ * 说明：Gitee Release 附件有 100MB 上限且下载需鉴权（匿名 403），
+ * 故不作为公开兜底源，统一走国内 GitHub 镜像集群。
  */
-export const DEFAULT_JAR_URL_GITEE = 'https://gitee.com/qiu-gaohua/dsh-get-jobs/releases/download/v0.1.0/backend.jar'
-export const DEFAULT_DB_URL_GITEE = 'https://gitee.com/qiu-gaohua/dsh-get-jobs/releases/download/v0.1.0/getjobs.db.template'
+export const DEFAULT_JAR_URL = 'https://ghproxy.net/https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar'
+export const JAR_MIRRORS = [
+  DEFAULT_JAR_URL,
+  'https://mirror.ghproxy.com/https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar',
+  'https://gh.api.99988866.xyz/https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar',
+]
+
+/** SQLite 模板库下载候选源；首项是默认 `dbUrl`。 */
+export const DEFAULT_DB_URL = 'https://ghproxy.net/https://github.com/whishi47/dsh-get-jobs/releases/latest/download/getjobs.db.template'
+export const DB_MIRRORS = [
+  DEFAULT_DB_URL,
+  'https://mirror.ghproxy.com/https://github.com/whishi47/dsh-get-jobs/releases/latest/download/getjobs.db.template',
+]
 
 /** Hard cap so a misconfigured URL cannot fill the disk. */
 export const JAR_MAX_BYTES = 600 * 1024 * 1024

@@ -9,7 +9,7 @@
 ## [Unreleased]
 
 ### ✨ Added
-- 后端 jar / 数据库模板支持 **Gitee 镜像源回退**：GitHub 拉取缓慢或失败时自动切换 Gitee，缓解国内下载问题
+- 后端 jar / 数据库模板支持 **多个国内 GitHub 镜像自动回退**（默认 `ghproxy.net` 为首，依次尝试 `mirror.ghproxy.com` 等）：GitHub 直连缓慢或失败时自动切换，缓解国内下载问题。Gitee Release 因 100MB 附件上限 + 下载需鉴权（匿名 403），不作为公开兜底源。
 
 ### 🔧 Changed
 - 项目署名统一为 **mattan**，npm 元数据与 Release 说明的许可证表述与 **PolyForm Noncommercial 1.0.0** 对齐
