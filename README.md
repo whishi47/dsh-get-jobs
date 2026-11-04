@@ -84,7 +84,7 @@ dsh-get-jobs/
 
 ```bash
 # 1) 安装插件（git 源）
-dsh plugin --profile web add "github:whishi47/dsh-get-jobs#main"
+dsh plugin --profile web add "github:whishi47/dsh-get-jobs#master"
 
 # 2) （可选）如需覆盖默认后端下载地址，编辑 profile 的 cordis.patch.yml：
 - id: dsh-get-jobs
