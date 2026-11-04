@@ -106,6 +106,8 @@ dsh plugin --profile web add "github:whishi47/dsh-get-jobs#master"
     jarUrl: 'https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar'
 ```
 
+> 🌏 国内网络若 GitHub 拉取缓慢或失败，插件会**自动回退到 Gitee 镜像源**；如需强制走 Gitee，可将 `jarUrl` 显式设为 `https://gitee.com/qiu-gaohua/dsh-get-jobs/releases/download/v0.1.0/backend.jar`。
+
 首次启动流程：下载 jar → 下载 SQLite 模板库 → `java -jar` 拉起 → 面板自动转「就绪」。求职功能还需 Playwright 浏览器（后端首次投递时自动下载）。
 
 ### 开发者模式
@@ -136,7 +138,7 @@ dsh --profile <profile> --dump-config | grep dsh-get-jobs   # 期望看到 "# ==
 | 字段 | 默认 | 说明 |
 | --- | --- | --- |
 | `baseUrl` | `http://127.0.0.1:9527` | 后端地址 |
-| `jarUrl` | GitHub Release `backend.jar` | 后端 jar 下载直链；无本地 jar 时首次启动自动下载并缓存 |
+| `jarUrl` | GitHub Release `backend.jar`（失败回退 Gitee 镜像） | 后端 jar 下载直链；默认先试 GitHub，拉不动自动回退 Gitee；无本地 jar 时首次启动自动下载并缓存 |
 | `dbUrl` | 默认模板库 | SQLite 模板下载直链（工作目录缺 `db/getjobs.db` 时自动下载） |
 | `dataDir` | `<DSH_HOME\|~>/.dsh/get-jobs` | 下载产物（jar/db）存放目录 |
 | `jarPath` | 自动 | 本地 jar 直指；存在时优先于 `jarUrl` |

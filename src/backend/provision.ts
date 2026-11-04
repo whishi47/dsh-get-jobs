@@ -31,6 +31,14 @@ export const DEFAULT_DB_URL = 'https://ghproxy.net/https://github.com/whishi47/d
 /** Backend jar shipped as a GitHub release asset; override via the `jarUrl` config. */
 export const DEFAULT_JAR_URL = 'https://ghproxy.net/https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar'
 
+/**
+ * Gitee 镜像源：GitHub 拉不动（国内网络/代理问题）时作为备选。
+ * 注意 Gitee 用具体 tag 路径，不使用 `latest`（Gitee 无此重定向）。
+ * 需 Gitee Release `v0.1.0` 已上传对应资产后方能生效。
+ */
+export const DEFAULT_JAR_URL_GITEE = 'https://gitee.com/qiu-gaohua/dsh-get-jobs/releases/download/v0.1.0/backend.jar'
+export const DEFAULT_DB_URL_GITEE = 'https://gitee.com/qiu-gaohua/dsh-get-jobs/releases/download/v0.1.0/getjobs.db.template'
+
 /** Hard cap so a misconfigured URL cannot fill the disk. */
 export const JAR_MAX_BYTES = 600 * 1024 * 1024
 export const DB_MAX_BYTES = 64 * 1024 * 1024
