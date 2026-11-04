@@ -7,7 +7,7 @@
 > **把 Boss / 猎聘 / 51job / 智联 的自动投递后端接进 DeepSeek Harness，打开面板即用。**
 > 不再需要手动起后端、开浏览器、配环境。
 
-![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+![PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18-green.svg)
 ![JDK](https://img.shields.io/badge/JDK-21-orange.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
@@ -176,8 +176,9 @@ npm run check      # build + gates + test 一次跑完
 
 ## 🤝 许可证
 
-- **使用边界**：本项目**禁止任何商业用途**，仅限个人学习交流与辅助求职投递。
-- **协议文件**：[LICENSE](LICENSE) 当前为 MIT 协议，允许技术层面的自由使用、复制、修改与再分发；若你希望获得具法律约束力的"非商业"授权条款，请与作者联系另行约定。
+- **协议文件**：本项目采用 [PolyForm Noncommercial 1.0.0](LICENSE) 协议，**明确禁止任何商业用途**，仅允许个人学习交流、技术参考与辅助求职投递之非商业使用、复制、修改与再分发。
+- **使用边界**：如将本项目用于任何商业目的，须事先取得作者书面授权。
+- **署名要求**：再分发须保留原作者署名（mattan / 邱高华）与许可证声明，不得移除。
 
 ---
 

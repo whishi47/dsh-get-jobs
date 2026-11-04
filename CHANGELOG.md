@@ -8,6 +8,9 @@
 
 ## [Unreleased]
 
+### 🔧 Changed
+- 许可证由 MIT 调整为 **PolyForm Noncommercial 1.0.0**，明确禁止任何商业用途（仅供个人学习交流与辅助求职投递）
+
 ## [v0.1.0] - 2026-11-04
 
 首个公开发布版本：将求职自动投递后端以 DeepSeek Harness 插件形式集成，安装即用。
