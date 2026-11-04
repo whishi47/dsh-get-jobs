@@ -1,0 +1,27 @@
+node_modules/
+lib/
+*.log
+
+# 本地数据库（含 API_KEY 等敏感配置，绝不入库）
+db/
+*.db
+*.db-shm
+*.db-wal
+
+# 项目运行数据 / 缓存
+data/
+.workbuddy/
+dist/
+coverage/
+
+# 环境变量与密钥
+.env
+.env.*
+*.local
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 文档（内部资料，不随仓库发布）
+docs/
