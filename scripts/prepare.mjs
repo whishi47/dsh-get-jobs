@@ -22,14 +22,16 @@ if (missing.length === 0) {
   process.exit(0)
 }
 
-console.log(`[prepare] 缺少产物：${missing.join(', ')}，尝试 npm run build …`)
+console.log(`[prepare] 缺少产物：${missing.join(', ')}，尝试重建 …`)
 try {
-  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], {
+  // 直接以当前 Node 运行构建脚本：Windows 上 spawnSync('npm.cmd') 会因 EINVAL
+  // 失败（Node 20+ 禁止不带 shell 直接执行 .cmd），且无需依赖 npm 在 PATH 中。
+  execFileSync(process.execPath, [join(root, 'scripts', 'build.mjs')], {
     cwd: root,
     stdio: 'inherit',
   })
 } catch (error) {
-  console.error('[prepare] 构建失败，请先安装 devDependencies 后手动执行 npm run build')
+  console.error('[prepare] 构建失败：请确认已安装 devDependencies（typescript / esbuild），或手动执行 npm run build')
   throw error
 }
 
