@@ -8,8 +8,8 @@
 
 ## [Unreleased]
 
-### ✨ Added
-- 后端 jar / 数据库模板支持 **多个国内 GitHub 镜像自动回退**（默认 `ghproxy.net` 为首，依次尝试 `mirror.ghproxy.com` 等）：GitHub 直连缓慢或失败时自动切换，缓解国内下载问题。Gitee Release 因 100MB 附件上限 + 下载需鉴权（匿名 403），不作为公开兜底源。
+### 🔧 Changed
+- 后端 jar 与数据库模板下载**统一指向 GitHub Release 直链**（移除此前尝试的镜像集群与 Gitee 兜底）：`jarUrl` 默认 `https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar`，`dbUrl` 同理指向 `getjobs.db.template`；用户仍可在配置中自定义 `jarUrl` / `dbUrl` 或 `jarPath` 本地 jar。
 
 ### 🔧 Changed
 - 项目署名统一为 **mattan**，npm 元数据与 Release 说明的许可证表述与 **PolyForm Noncommercial 1.0.0** 对齐

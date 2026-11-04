@@ -13,7 +13,7 @@ import type { ResolvedConfig } from '../config.js'
 import { findProjectRoot, PACKAGE_ROOT } from '../layout.js'
 import { detectJdk21, findJar, gradleCommand, type JdkInfo } from './jdk.js'
 import { detectNode } from './node-runtime.js'
-import { downloadFile, jarCachePath, jarCacheUsable, planBackendLaunch, JAR_MIRRORS, DB_MIRRORS, DB_MAX_BYTES, JAR_MAX_BYTES } from './provision.js'
+import { downloadFile, jarCachePath, jarCacheUsable, planBackendLaunch, DEFAULT_JAR_URL, DEFAULT_DB_URL, DB_MAX_BYTES, JAR_MAX_BYTES } from './provision.js'
 
 /** Observable backend state. */
 export type BackendState = 'unknown' | 'probing' | 'ready' | 'starting' | 'failed'
@@ -183,25 +183,16 @@ export class BackendSupervisor {
     if (plan.kind === 'download') {
       this.state = 'starting'
       const dataDir = this.config.dataDir
-      // 多个国内 GitHub 镜像依次尝试；basename 均为 backend.jar，缓存路径一致
-      const jarCandidates = Array.from(new Set([this.config.jarUrl, ...JAR_MIRRORS].filter(Boolean))) as string[]
-      const target = jarCachePath(dataDir, jarCandidates[0]!)
+      // 默认从 GitHub Release 下载 backend.jar，用户可用 jarUrl 覆盖
+      const target = jarCachePath(dataDir, this.config.jarUrl ?? DEFAULT_JAR_URL)
       if (!jarCacheUsable(target)) {
         this.message = `正在下载后端（缓存于 ${dataDir}）…`
-        let jarOk = false
-        for (const url of jarCandidates) {
-          try {
-            await downloadFile(url, target, JAR_MAX_BYTES, (text) => { this.message = text })
-            jarOk = true
-            break
-          } catch {
-            this.message = `从 ${url} 下载失败，尝试备选源…`
-          }
-        }
-        if (!jarOk) {
+        try {
+          await downloadFile(this.config.jarUrl ?? DEFAULT_JAR_URL, target, JAR_MAX_BYTES, (text) => { this.message = text })
+        } catch (error) {
           this.state = 'failed'
           this.giveUp = true
-          this.message = '后端 jar 下载失败（已尝试多个国内镜像源）。可改用 jarPath 本地 jar，或重试'
+          this.message = `后端 jar 下载失败：${error instanceof Error ? error.message : String(error)}（可改用 jarPath 本地 jar，或重试）`
           return { ...this.status(), started: false, waitedMs: 0 }
         }
       } else {
@@ -211,21 +202,12 @@ export class BackendSupervisor {
       cwd = dataDir
       if (!existsSync(join(cwd, 'db', 'getjobs.db'))) {
         this.message = '正在下载 SQLite 模板库…'
-        const dbCandidates = Array.from(new Set([this.config.dbUrl, ...DB_MIRRORS].filter(Boolean))) as string[]
-        let dbOk = false
-        for (const url of dbCandidates) {
-          try {
-            await downloadFile(url, join(cwd, 'db', 'getjobs.db'), DB_MAX_BYTES)
-            dbOk = true
-            break
-          } catch {
-            this.message = `从 ${url} 下载数据库模板失败，尝试备选源…`
-          }
-        }
-        if (!dbOk) {
+        try {
+          await downloadFile(this.config.dbUrl ?? DEFAULT_DB_URL, join(cwd, 'db', 'getjobs.db'), DB_MAX_BYTES)
+        } catch (error) {
           this.state = 'failed'
           this.giveUp = true
-          this.message = '数据库模板下载失败（已尝试多个国内镜像源）。可配置 dbUrl 或手动放置 db/getjobs.db'
+          this.message = `数据库模板下载失败：${error instanceof Error ? error.message : String(error)}（可配置 dbUrl 或手动放置 db/getjobs.db）`
           return { ...this.status(), started: false, waitedMs: 0 }
         }
       }

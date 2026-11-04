@@ -106,7 +106,7 @@ dsh plugin --profile web add "github:whishi47/dsh-get-jobs#master"
     jarUrl: 'https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar'
 ```
 
-> 🌏 国内网络若 GitHub 直连缓慢或失败，插件会**依次尝试多个国内 GitHub 镜像**（默认 `ghproxy.net` 为首，自动回退至 `mirror.ghproxy.com` 等），任一可达即可完成首次自动下载。
+> 🌏 后端 jar 与数据库模板均从 **GitHub Release** 自动下载（首次启动拉取并缓存于本地）。若你所在网络直连 GitHub 缓慢，可手动将 `jarUrl` / `dbUrl` 配置为可达的镜像地址；也可本地构建后端（`backend/` 目录）后用 `jarPath` 指定本地 jar 跳过下载。
 
 首次启动流程：下载 jar → 下载 SQLite 模板库 → `java -jar` 拉起 → 面板自动转「就绪」。求职功能还需 Playwright 浏览器（后端首次投递时自动下载）。
 
@@ -138,7 +138,7 @@ dsh --profile <profile> --dump-config | grep dsh-get-jobs   # 期望看到 "# ==
 | 字段 | 默认 | 说明 |
 | --- | --- | --- |
 | `baseUrl` | `http://127.0.0.1:9527` | 后端地址 |
-| `jarUrl` | `ghproxy.net` 镜像的 GitHub Release `backend.jar` | 后端 jar 下载直链；默认依次尝试多个国内 GitHub 镜像，任一可达即下载并缓存；无本地 jar 时首次启动自动拉取 |
+| `jarUrl` | GitHub Release `backend.jar` | 后端 jar 下载直链；无本地 jar 时首次启动自动拉取并缓存 |
 | `dbUrl` | 默认模板库 | SQLite 模板下载直链（工作目录缺 `db/getjobs.db` 时自动下载） |
 | `dataDir` | `<DSH_HOME\|~>/.dsh/get-jobs` | 下载产物（jar/db）存放目录 |
 | `jarPath` | 自动 | 本地 jar 直指；存在时优先于 `jarUrl` |
@@ -177,7 +177,7 @@ npm run check      # build + gates + test 一次跑完
 3. **上传 GitHub Release**：`gh release upload v0.1.0 release-assets/backend.jar release-assets/getjobs.db.template --clobber`
 4. 如需新版本，打新 tag（如 `v0.1.1`）并同步更新 `CHANGELOG.md`。
 
-> 插件运行时已内置**多个国内 GitHub 镜像自动回退**（默认 `ghproxy.net` 为首），无需 Gitee；GitHub Release 可达其一即可完成首次自动下载。
+> 插件运行时默认从 **GitHub Release** 拉取 `backend.jar` 与 `getjobs.db.template`；如所在网络直连 GitHub 不便，可在配置中显式设置 `jarUrl` / `dbUrl` 指向镜像，或用 `jarPath` 指定本地 jar 跳过下载。
 
 ---
 

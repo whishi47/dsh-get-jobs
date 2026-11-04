@@ -40,7 +40,7 @@ export const Config: Schema<Config> = Schema.object({
   projectDir: Schema.string().description('后端仓库目录，默认向上自动发现；公开安装模式无需配置'),
   javaHome: Schema.string().description('启动后端使用的 JAVA_HOME（需 JDK 21）'),
   jarPath: Schema.string().description('显式指定可执行 jar；默认自动挑选 build/libs 下最新的'),
-  jarUrl: Schema.string().description('后端 jar 下载地址（公开安装模式）：默认从 GitHub Release（经 ghproxy 等国内镜像）拉取 backend.jar，多个镜像自动回退；无本地 jar 时首次启动自动下载到 dataDir'),
+  jarUrl: Schema.string().description('后端 jar 下载地址（公开安装模式）：默认从 GitHub Release 拉取 backend.jar；无本地 jar 时首次启动自动下载到 dataDir'),
   dbUrl: Schema.string().description('SQLite 模板库下载地址：工作目录缺 db/getjobs.db 时自动下载'),
   dataDir: Schema.string().description('下载产物（jar/db）存放目录，默认 <DSH_HOME|~>/.dsh/get-jobs'),
   autostart: Schema.boolean().default(true).description('面板打开时自动拉起后端'),
