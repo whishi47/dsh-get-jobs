@@ -37,6 +37,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "prepare": "node scripts/prepare.mjs",
     "build": "node scripts/build.mjs",
     "build:node": "node scripts/build.mjs --node",
     "build:client": "node scripts/build.mjs --client",

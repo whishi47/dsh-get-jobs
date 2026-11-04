@@ -1,6 +1,8 @@
 node_modules/
-lib/
 *.log
+
+# lib/ 为随仓库发布的预构建产物（公开安装必需），仅排除构建期的临时文件
+lib/.client.bundle.cjs
 
 # 本地数据库（含 API_KEY 等敏感配置，绝不入库）
 db/

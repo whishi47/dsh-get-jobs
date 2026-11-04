@@ -73,6 +73,11 @@ dsh-get-jobs/
 │   ├── config.ts            # 插件配置 schema
 │   ├── layout.ts            # 后端项目自动发现
 │   └── api/                 # 前后端接口封装
+├── lib/                     # 预构建产物（随仓库发布，公开安装开箱即用）
+│   ├── index.js / index.d.ts
+│   ├── client.js            # 浏览器半边（ModuleLoader 包裹）
+│   └── backend/             # Node 半边编译产物
+├── scripts/prepare.mjs      # 安装兜底：产物齐全即跳过构建，缺失才尝试构建
 ├── test/                    # Node + 浏览器真实挂载测试
 ├── cordis.patch.yml         # 插件行注入配置层
 ├── CONTRIBUTING.md          # 贡献指南（PR 流程 / 提交规范）
@@ -88,10 +93,10 @@ dsh-get-jobs/
 ### 前置条件
 
 - **JDK 21**（`JAVA_HOME` 或插件配置 `javaHome`）
-- **Node ≥ 18**（Playwright 驱动由插件自动探测）
+- **Node ≥ 20**（与 `package.json` 的 `engines` 一致；Playwright 驱动由插件自动探测）
 - 网络通畅（首次启动需下载后端 jar 与数据库模板）
 
-> 💡 **公开安装模式无需任何后端源码与手动构建**：插件会在首次启动时自动从 GitHub Release 拉取 `backend.jar`（约 265MB）与 SQLite 模板库，下载后离线复用。
+> 💡 **开箱即用，无需手动构建**：编译产物 `lib/` 已随仓库发布（Node 半边 + 浏览器面板），同时保留 `prepare` 安装兜底——安装器允许构建脚本时才尝试重建，产物齐全时直接跳过，因此即使 pnpm 拦截构建脚本也能正常加载。插件首次启动时自动从 GitHub Release 拉取 `backend.jar`（约 265MB）与 SQLite 模板库，下载后离线复用。
 
 ### 公开安装（推荐）
 

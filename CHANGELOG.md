@@ -8,10 +8,11 @@
 
 ## [Unreleased]
 
-### 🔧 Changed
-- 后端 jar 与数据库模板下载**统一指向 GitHub Release 直链**（移除此前尝试的镜像集群与 Gitee 兜底）：`jarUrl` 默认 `https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar`，`dbUrl` 同理指向 `getjobs.db.template`；用户仍可在配置中自定义 `jarUrl` / `dbUrl` 或 `jarPath` 本地 jar。
+### 🐛 Fixed
+- **修复公开安装无法加载插件**：`package.json` 的 `main` / `exports` 指向 `lib/`，但 `lib/` 此前被 `.gitignore` 排除且从未入库，且缺少 `prepare` 构建钩子，导致从 GitHub / Gitee clone 安装后入口文件缺失。现采用双保险：① 预构建产物 `lib/` 随仓库发布；② 新增 `scripts/prepare.mjs` 安装兜底（产物齐全即跳过，仅在缺失时尝试构建，不依赖 devDependencies）。已用干净 clone 实测验证。
 
 ### 🔧 Changed
+- 后端 jar 与数据库模板下载**统一指向 GitHub Release 直链**（移除此前尝试的镜像集群与 Gitee 兜底）：`jarUrl` 默认 `https://github.com/whishi47/dsh-get-jobs/releases/latest/download/backend.jar`，`dbUrl` 同理指向 `getjobs.db.template`；用户仍可在配置中自定义 `jarUrl` / `dbUrl` 或 `jarPath` 本地 jar。
 - 项目署名统一为 **mattan**，npm 元数据与 Release 说明的许可证表述与 **PolyForm Noncommercial 1.0.0** 对齐
 - 许可证由 MIT 调整为 **PolyForm Noncommercial 1.0.0**，明确禁止任何商业用途（仅供个人学习交流与辅助求职投递）
 
