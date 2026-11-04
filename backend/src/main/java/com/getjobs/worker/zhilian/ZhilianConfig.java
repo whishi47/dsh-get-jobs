@@ -7,6 +7,9 @@ import lombok.SneakyThrows;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * @author mattan
+ */
 @Data
 public class ZhilianConfig {
     /**

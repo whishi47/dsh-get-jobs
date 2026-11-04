@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
+ * @author mattan
  * 前程无忧自动投递简历
  */
 @Data

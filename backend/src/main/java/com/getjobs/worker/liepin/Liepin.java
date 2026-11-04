@@ -25,6 +25,9 @@ import java.util.function.Supplier;
 import static com.getjobs.worker.liepin.Locators.*;
 
 
+/**
+ * @author mattan
+ */
 @Slf4j
 @Component
 @Scope("prototype")

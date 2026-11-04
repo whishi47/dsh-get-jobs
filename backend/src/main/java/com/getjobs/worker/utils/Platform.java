@@ -2,6 +2,9 @@ package com.getjobs.worker.utils;
 
 import lombok.Getter;
 
+/**
+ * @author mattan
+ */
 @Getter
 public enum Platform {
     ZHILIAN("智联招聘"),

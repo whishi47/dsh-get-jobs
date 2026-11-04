@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
+ * @author mattan
  * 前程无忧自动投递简历 - Playwright版本
  */
 @Slf4j

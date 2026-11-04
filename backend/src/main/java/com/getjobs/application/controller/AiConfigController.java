@@ -101,6 +101,27 @@ public class AiConfigController {
     }
 
     /**
+     * AI 用量与预算快照。
+     *
+     * <p>返回今日累计（落库，重启不清）与本次运行（内存，投递开始时清零）的调用次数和
+     * token，以及当前限额配置，供面板「设置 → AI 设置」展示。参数名与前端一一对应。
+     */
+    @GetMapping("/usage")
+    public ResponseEntity<Map<String, Object>> usage() {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            response.put("success", true);
+            response.put("data", aiService.getUsageSnapshot());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("获取 AI 用量失败", e);
+            response.put("success", false);
+            response.put("message", "获取 AI 用量失败: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
+    /**
      * AI 文本生成测试接口（GET）
      * 示例：/api/ai/chat?content=你好，帮我写一句简洁的问候语
      */

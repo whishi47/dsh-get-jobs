@@ -34,6 +34,7 @@ import static com.getjobs.worker.boss.Locators.*;
 
 
 /**
+ * @author mattan
  * Boss直聘自动投递
  */
 @Slf4j
@@ -60,6 +61,18 @@ public class Boss {
     private Supplier<Boolean> shouldStopCallback;
 
     private final List<Job> resultList = new ArrayList<>();
+
+    /**
+     * 池化生成的招呼语：一次批量生成多条，按岗位轮换使用。
+     *
+     * <p>为什么要有这个：实测 150 份投递会打 150 次大模型接口，每次输出几千 token
+     * 的思考过程、最后只取 50-80 字，账单就是这么堆起来的。批量生成 + 岗位缓存
+     * 可以把调用次数降到个位数。
+     */
+    private final List<String> aiGreetingPool = new ArrayList<>();
+    /** 岗位指纹 → 已生成的招呼语；同一岗位再次出现时直接复用，0 调用。 */
+    private final Map<String, String> aiGreetingCache = new HashMap<>();
+    private int aiGreetingCursor = 0;
 
     /** Boss 首页，UI 搜索的入口 */
     private static final String BOSS_HOME_URL = "https://www.zhipin.com";
@@ -106,6 +119,8 @@ public class Boss {
      * 执行投递
      */
     public int execute() {
+        // 每次投递重新计算「本次运行」的 AI 用量（今日累计不清零）
+        aiService.resetRunUsage();
         for (String cityCode : config.getCityCode()) {
             if (shouldStopCallback != null && Boolean.TRUE.equals(shouldStopCallback.get())) {
                 progressCallback.accept("用户取消投递", 0, 0);
@@ -1695,7 +1710,104 @@ public class Boss {
     private static final int AI_GREETING_MAX_CHARS = 80;
     private static final String AI_GREETING_SAFE_FALLBACK = "您好，我对贵司的岗位很感兴趣。结合岗位要求和我目前的求职方向，希望有机会进一步了解团队工作内容，并介绍相关个人经历。感谢您阅读，期待后续沟通。";
 
+    /**
+     * 生成打招呼语：默认走池化模式，不再每个岗位打一次模型。
+     *
+     * <p>池化模式下"AI 判断不匹配就跳过岗位"的能力会被关闭（那个判断本身也要花钱），
+     * 岗位筛选交给平台侧的关键词/城市/薪资条件。想恢复旧行为，把配置
+     * {@code AI_GREETING_POOL} 设为 false。
+     */
     private AiMessageDecision generateAiMessage(String keyword, String jobName, String jd) {
+        if (!aiService.getBoolSetting("AI_GREETING_POOL", true)) {
+            return generateAiMessagePerJob(keyword, jobName, jd);
+        }
+        String cacheKey = greetingCacheKey(jobName, jd);
+        String cached = aiGreetingCache.get(cacheKey);
+        if (cached != null) {
+            return new AiMessageDecision(false, cached);
+        }
+        String pooled = nextPooledGreeting(keyword, jobName, jd);
+        if (pooled != null) {
+            aiGreetingCache.put(cacheKey, pooled);
+            return new AiMessageDecision(false, pooled);
+        }
+        // 池化失败不跳过岗位：回退固定招呼语，投递继续
+        return new AiMessageDecision(false, config.getSayHi());
+    }
+
+    private String greetingCacheKey(String jobName, String jd) {
+        String base = (jobName == null ? "" : jobName) + "|" + (jd == null ? "" : jd);
+        return Integer.toHexString(base.hashCode());
+    }
+
+    private String nextPooledGreeting(String keyword, String jobName, String jd) {
+        if (aiGreetingPool.isEmpty() && !refillGreetingPool(keyword, jobName, jd)) return null;
+        String value = aiGreetingPool.get(Math.floorMod(aiGreetingCursor, aiGreetingPool.size()));
+        aiGreetingCursor++;
+        return value;
+    }
+
+    /** 一次生成一批招呼语；失败返回 false，由调用方回退固定文案。 */
+    private boolean refillGreetingPool(String keyword, String jobName, String jd) {
+        int batch = Math.max(1, Math.min(30, aiService.getIntSetting("AI_GREETING_BATCH", 10)));
+        AiEntity aiConfig = aiService.getAiConfig();
+        String introduce = (aiConfig != null && aiConfig.getIntroduce() != null) ? aiConfig.getIntroduce() : "";
+        String prompt = "请一次性生成 " + batch + " 条中文求职打招呼语，供同一批岗位轮换使用。\n"
+                + "要求：\n"
+                + "1. 每条 50 至 80 个汉字或字符，自然、真诚、具体；\n"
+                + "2. 不得出现公司名、岗位名，不得编造未提供的经历、年限、技能或成果；\n"
+                + "3. 每条单独一行，不要编号、不要引号、不要解释、不要 markdown；\n"
+                + "4. 语气可以有差异，但都要围绕下面的个人介绍与求职方向。\n"
+                + "个人介绍：" + introduce + "\n"
+                + "搜索关键词：" + (keyword == null ? "" : keyword) + "\n"
+                + "参考岗位：" + (jobName == null ? "" : jobName) + "\n"
+                + "岗位描述节选：" + truncate(jd, 600);
+        try {
+            String result = aiService.sendRequest(prompt);
+            List<String> parsed = parseGreetingBatch(result, batch);
+            if (parsed.isEmpty()) {
+                log.warn("AI 招呼语池生成结果为空，回退固定招呼语");
+                return false;
+            }
+            aiGreetingPool.clear();
+            aiGreetingPool.addAll(parsed);
+            aiGreetingCursor = 0;
+            log.info("AI 招呼语池已补充 {} 条（后续岗位直接复用，不再逐岗调用）", parsed.size());
+            return true;
+        } catch (Exception error) {
+            log.warn("AI 招呼语池生成失败，回退固定招呼语: {}", error.getMessage());
+            return false;
+        }
+    }
+
+    /** 把模型返回的多行文本清洗成可发送的招呼语列表。 */
+    static List<String> parseGreetingBatch(String result, int limit) {
+        List<String> values = new ArrayList<>();
+        if (result == null || result.isBlank()) return values;
+        String normalized = result.replace("\r", "");
+        for (String line : normalized.split("\n")) {
+            String value = line.strip()
+                    .replaceAll("^[-*•\\s]+", "")
+                    .replaceAll("^\\d+[.、)）]\\s*", "")
+                    .replaceAll("^[\"'“”‘’「」『』]+|[\"'“”‘’「」『』]+$", "")
+                    .strip();
+            if (value.isEmpty() || value.startsWith("```")) continue;
+            int length = value.codePointCount(0, value.length());
+            if (length < 20 || length > 160) continue;
+            value = truncateGreeting(value);
+            if (!values.contains(value)) values.add(value);
+            if (values.size() >= limit) break;
+        }
+        return values;
+    }
+
+    private static String truncate(String value, int max) {
+        if (value == null) return "";
+        return value.length() > max ? value.substring(0, max) + "…" : value;
+    }
+
+    /** 旧的"每个岗位单独生成"路径，保留给 AI_GREETING_POOL=false 的场景。 */
+    private AiMessageDecision generateAiMessagePerJob(String keyword, String jobName, String jd) {
         AiEntity aiConfig = aiService.getAiConfig();
         String introduce = (aiConfig != null && aiConfig.getIntroduce() != null) ? aiConfig.getIntroduce() : "";
         String prompt = (aiConfig != null) ? aiConfig.getPrompt() : null;

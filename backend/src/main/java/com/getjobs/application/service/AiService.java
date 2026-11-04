@@ -18,17 +18,41 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * AI 服务（Spring 管理）
  * 从数据库配置获取 BASE_URL、API_KEY、MODEL 并发起 AI 请求。
+ *
+ * <p>成本治理（v0.2.0 起）：
+ * <ul>
+ *   <li>{@code AI_MAX_TOKENS} 限制单次输出长度，默认 300 —— 一句 50-80 字的招呼语用不完，
+ *       但推理模型不加限制时会输出几千 token 的思考过程，按输出计费，这是账单失控的主因；</li>
+ *   <li>{@code AI_DISABLE_THINKING} 尝试让模型关闭思维链；部分兼容层不认这个参数，
+ *       碰到一次 400 后自动永久关闭该参数，不会一直重试；</li>
+ *   <li>每次调用前检查 {@code AI_RUN_LIMIT} / {@code AI_DAILY_LIMIT} 预算闸门；</li>
+ *   <li>成功调用后把 usage 交给 {@link AiUsageService} 累计，面板可查今日与本次运行用量。</li>
+ * </ul>
  */
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class AiService {
+
+    /** 默认单次输出上限。 */
+    public static final int DEFAULT_MAX_TOKENS = 300;
+    /** 默认单次运行调用上限；0 表示不限。 */
+    public static final int DEFAULT_RUN_LIMIT = 30;
+    /** 默认每日调用上限；0 表示不限。 */
+    public static final int DEFAULT_DAILY_LIMIT = 300;
+
     private final ConfigService configService;
     private final AiMapper aiMapper;
+    private final AiUsageService usageService;
+
+    /** 有些兼容层不认 thinking 参数，碰到一次 400 后就永久关闭该参数。 */
+    private volatile boolean thinkingSwitchSupported = true;
 
     /**
      * 发送 AI 请求（非流式）并返回回复内容。
@@ -36,6 +60,8 @@ public class AiService {
      * @return AI 回复文本
      */
     public String sendRequest(String content) {
+        assertBudget();
+
         // 读取并校验配置
         var cfg = configService.getAiConfigs();
         String baseUrl = cfg.get("BASE_URL");
@@ -47,10 +73,7 @@ public class AiService {
                 : buildChatCompletionsEndpoint(baseUrl);
 
         int timeoutInSeconds = 60;
-
-        HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(timeoutInSeconds))
-                .build();
+        int maxTokens = getIntSetting("AI_MAX_TOKENS", DEFAULT_MAX_TOKENS);
 
         // 构建 JSON 请求体
         JSONObject requestData = new JSONObject();
@@ -59,6 +82,7 @@ public class AiService {
         if (endpoint.endsWith("/responses")) {
             // Responses API 采用 input 字段
             requestData.put("input", content);
+            if (maxTokens > 0) requestData.put("max_output_tokens", maxTokens);
             // 如需显式控制推理强度，可按需开启：
             // JSONObject reasoning = new JSONObject();
             // reasoning.put("effort", "medium");
@@ -71,20 +95,26 @@ public class AiService {
             message.put("content", content);
             messages.put(message);
             requestData.put("messages", messages);
+            if (maxTokens > 0) requestData.put("max_tokens", maxTokens);
+        }
+        boolean thinkingDisabled = getBoolSetting("AI_DISABLE_THINKING", true) && thinkingSwitchSupported;
+        if (thinkingDisabled) {
+            JSONObject thinking = new JSONObject();
+            thinking.put("type", "disabled");
+            requestData.put("thinking", thinking);
         }
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(endpoint))
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .header("Authorization", "Bearer " + apiKey)
-                // 某些服务（例如 Azure OpenAI）需要 api-key 头，额外加一层兼容
-                .header("api-key", apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(requestData.toString()))
-                .build();
-
         try {
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = post(endpoint, apiKey, requestData, timeoutInSeconds);
+
+            // 兼容层不支持 thinking 参数时，去掉它重试一次，之后不再携带
+            if (response.statusCode() == 400 && requestData.has("thinking")) {
+                thinkingSwitchSupported = false;
+                requestData.remove("thinking");
+                log.warn("当前模型不支持 thinking 开关，已自动去掉该参数并重试: {}", brief(response.body()));
+                response = post(endpoint, apiKey, requestData, timeoutInSeconds);
+            }
+
             if (response.statusCode() == 200) {
                 JSONObject responseObject = new JSONObject(response.body());
 
@@ -128,22 +158,108 @@ public class AiService {
                 log.info("AI响应: id={}, time={}, model={}, promptTokens={}, completionTokens={}, totalTokens={}",
                         requestId, createdTime.format(formatter), usedModel, promptTokens, completionTokens, totalTokens);
 
+                recordUsage(usageObject);
                 return responseContent;
             } else {
                 // 更详细的错误日志，便于定位 400 问题
-                log.error("AI请求失败: status={}, endpoint={}, body={}", response.statusCode(), endpoint, response.body());
+                log.error("AI请求失败: status={}, endpoint={}, body={}", response.statusCode(), endpoint, brief(response.body()));
                 // 针对 Responses-only 模型误用 Chat Completions 的常见错误做一次自动重试
                 if (!endpoint.endsWith("/responses") && containsReasoningParamError(response.body())) {
                     String fallbackEndpoint = buildResponsesEndpoint(baseUrl);
                     log.warn("检测到 reasoning 相关参数错误，自动切换到 Responses API 重试: {}", fallbackEndpoint);
                     return sendRequestViaResponses(content, apiKey, model, fallbackEndpoint);
                 }
-                throw new RuntimeException("AI请求失败，状态码: " + response.statusCode() + ", 详情: " + response.body());
+                throw new RuntimeException("AI请求失败，状态码: " + response.statusCode() + ", 详情: " + brief(response.body()));
             }
         } catch (Exception e) {
             log.error("调用AI服务异常", e);
             throw e instanceof RuntimeException ? (RuntimeException) e : new RuntimeException(e);
         }
+    }
+
+    private HttpResponse<String> post(String endpoint, String apiKey, JSONObject body, int timeoutInSeconds)
+            throws java.io.IOException, InterruptedException {
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(timeoutInSeconds))
+                .build();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(endpoint))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                // 某些服务（例如 Azure OpenAI）需要 api-key 头，额外加一层兼容
+                .header("api-key", apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                .build();
+        return client.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    /** 把一次成功调用的 usage 交给统计服务；缺失时按 0 记一次调用。 */
+    private void recordUsage(JSONObject usageObject) {
+        if (usageObject == null) {
+            usageService.record(0, 0, 0);
+            return;
+        }
+        int prompt = usageObject.optInt("prompt_tokens", usageObject.optInt("input_tokens", -1));
+        int completion = usageObject.optInt("completion_tokens", usageObject.optInt("output_tokens", -1));
+        int total = usageObject.optInt("total_tokens", -1);
+        usageService.record(prompt, completion, total);
+        log.info("AI用量: 本次 prompt={}, completion={}, total={} | 本次运行累计 {} 次 / {} tokens",
+                Math.max(prompt, 0), Math.max(completion, 0), total,
+                usageService.runCalls(), usageService.run().get("totalTokens"));
+    }
+
+    /** 请求前的预算闸门，超限抛 {@link AiQuotaExceededException}。 */
+    private void assertBudget() {
+        usageService.assertWithin(
+                getIntSetting("AI_RUN_LIMIT", DEFAULT_RUN_LIMIT),
+                getIntSetting("AI_DAILY_LIMIT", DEFAULT_DAILY_LIMIT));
+    }
+
+    /** 投递开始时清零「本次运行」用量。 */
+    public void resetRunUsage() {
+        usageService.resetRun();
+    }
+
+    /** 面板展示用的用量快照。 */
+    public Map<String, Object> getUsageSnapshot() {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("today", usageService.today());
+        body.put("run", usageService.run());
+
+        Map<String, Object> limits = new LinkedHashMap<>();
+        limits.put("run", getIntSetting("AI_RUN_LIMIT", DEFAULT_RUN_LIMIT));
+        limits.put("daily", getIntSetting("AI_DAILY_LIMIT", DEFAULT_DAILY_LIMIT));
+        limits.put("maxTokens", getIntSetting("AI_MAX_TOKENS", DEFAULT_MAX_TOKENS));
+        limits.put("disableThinking", getBoolSetting("AI_DISABLE_THINKING", true));
+        limits.put("greetingPool", getBoolSetting("AI_GREETING_POOL", true));
+        limits.put("greetingBatch", getIntSetting("AI_GREETING_BATCH", 10));
+        body.put("limits", limits);
+        body.put("model", configService.getConfigValue("MODEL"));
+        body.put("thinkingSwitchSupported", thinkingSwitchSupported);
+        return body;
+    }
+
+    /** 读整数配置；缺失或非法时回退默认值。 */
+    public int getIntSetting(String key, int fallback) {
+        String raw = configService.getConfigValue(key);
+        if (raw == null || raw.isBlank()) return fallback;
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException error) {
+            return fallback;
+        }
+    }
+
+    /** 读布尔配置，兼容 1/0、true/false、yes/no、on/off。 */
+    public boolean getBoolSetting(String key, boolean fallback) {
+        String raw = configService.getConfigValue(key);
+        if (raw == null || raw.isBlank()) return fallback;
+        return switch (raw.trim().toLowerCase()) {
+            case "1", "true", "yes", "on" -> true;
+            case "0", "false", "no", "off" -> false;
+            default -> fallback;
+        };
     }
 
     private String normalizeBaseUrl(String baseUrl) {
@@ -201,6 +317,7 @@ public class AiService {
      */
     private String sendRequestViaResponses(String content, String apiKey, String model, String endpoint) {
         int timeoutInSeconds = 60;
+        int maxTokens = getIntSetting("AI_MAX_TOKENS", DEFAULT_MAX_TOKENS);
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(timeoutInSeconds))
                 .build();
@@ -209,6 +326,7 @@ public class AiService {
         requestData.put("model", model);
         requestData.put("temperature", 0.5);
         requestData.put("input", content);
+        if (maxTokens > 0) requestData.put("max_output_tokens", maxTokens);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(endpoint))
@@ -223,6 +341,7 @@ public class AiService {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 JSONObject resp = new JSONObject(response.body());
+                recordUsage(resp.optJSONObject("usage"));
                 String outputText = resp.optString("output_text", null);
                 if (outputText != null && !outputText.isEmpty()) {
                     return outputText;
@@ -238,12 +357,18 @@ public class AiService {
                 // 无法解析则直接返回原始体，避免空值中断流程
                 return response.body();
             }
-            log.error("Responses API 调用失败: status={}, endpoint={}, body={}", response.statusCode(), endpoint, response.body());
-            throw new RuntimeException("AI请求失败，状态码: " + response.statusCode() + ", 详情: " + response.body());
+            log.error("Responses API 调用失败: status={}, endpoint={}, body={}", response.statusCode(), endpoint, brief(response.body()));
+            throw new RuntimeException("AI请求失败，状态码: " + response.statusCode() + ", 详情: " + brief(response.body()));
         } catch (Exception e) {
             log.error("Responses API 调用异常", e);
             throw e instanceof RuntimeException ? (RuntimeException) e : new RuntimeException(e);
         }
+    }
+
+    /** 日志里只保留一小段响应体，避免把整页错误 HTML 刷进日志。 */
+    private static String brief(String body) {
+        if (body == null) return "";
+        return body.length() > 400 ? body.substring(0, 400) + "…" : body;
     }
 
     // ================= 合并的 AI 配置管理方法 =================

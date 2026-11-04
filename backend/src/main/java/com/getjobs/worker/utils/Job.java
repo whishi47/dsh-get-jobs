@@ -4,6 +4,9 @@ import lombok.Data;
 
 import java.io.Serializable;
 
+/**
+ * @author mattan
+ */
 @Data
 public class Job implements Serializable {
     /**

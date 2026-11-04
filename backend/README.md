@@ -60,8 +60,8 @@ cp assets/getjobs.db.template db/getjobs.db
 
 ```bash
 ./gradlew bootJar --no-daemon
-# 产物：build/libs/get_jobs-2.0.1.jar
-java -jar build/libs/get_jobs-2.0.1.jar
+# 产物：build/libs/dsh-get-jobs-backend-2.0.1.jar
+java -jar build/libs/dsh-get-jobs-backend-2.0.1.jar
 ```
 
 > 首次运行会自动下载 patchright-core 并装配 Playwright driver；首次投递时按需下载浏览器内核。

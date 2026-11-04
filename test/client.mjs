@@ -551,6 +551,19 @@ console.log('\n[settings: editable config, blacklist pagination & export]')
     if (target.includes('/api/config')) {
       return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, data: { ...configStore } }), json: async () => ({ success: true, data: { ...configStore } }) }
     }
+    if (target.includes('/api/ai/usage')) {
+      const body = {
+        success: true,
+        data: {
+          today: { day: '2026-11-05', calls: 12, promptTokens: 3400, completionTokens: 5600, totalTokens: 9000 },
+          run: { calls: 3, promptTokens: 600, completionTokens: 900, totalTokens: 1500 },
+          limits: { run: 30, daily: 300, maxTokens: 300, disableThinking: true, greetingPool: true, greetingBatch: 10 },
+          model: 'deepseek-chat',
+          thinkingSwitchSupported: true,
+        },
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify(body), json: async () => body }
+    }
     if (target.includes('/api/ai/config')) {
       const body = { success: true, data: { id: 1, introduce: '介绍', prompt: '提示词' }, message: 'ok' }
       return { ok: true, status: 200, text: async () => JSON.stringify(body), json: async () => body }
@@ -596,6 +609,12 @@ console.log('\n[settings: editable config, blacklist pagination & export]')
   check('设置：显示 BASE_URL 表单', text().includes('BASE_URL'))
   check('设置：企业微信 webhook 表单', text().includes('HOOK_URL'))
   check('设置：AI 设置子 tab 含 introduce 标签', text().includes('自我介绍'))
+  // v0.2.0：用量必须可见，预算必须可改 —— 否则用户只能等账单来了才知道
+  check('设置：显示 AI 用量卡片', text().includes('AI 用量与预算'), text().slice(0, 300))
+  check('设置：今日 token 可读', text().includes('9,000'), text().slice(0, 400))
+  check('设置：预算字段可编辑', text().includes('单次运行调用上限') && text().includes('每日调用上限') && text().includes('单次输出 max_tokens'))
+  check('设置：招呼语池化开关', text().includes('批量生成招呼语'))
+  check('设置：推荐模型一键填入', [...container.querySelectorAll('button')].some((node) => node.textContent?.trim() === '用推荐'))
 
   // 自定义键可见性需要切到「自定义配置」子 tab
   const customSubTab = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '自定义配置')
@@ -824,6 +843,125 @@ console.log('\n[starts after the panel is already open]')
   await React.act(async () => { root.unmount() })
   container.remove()
   globalThis.fetch = originalFetch
+  console.error = originalWarn
+}
+
+console.log('\n[resume: AI evaluation, scoring UI and HTML report]')
+{
+  // v0.2.0 新增：导入简历后可让 AI 打分，并把结果导出成独立 HTML。
+  // 这里验证三步：未导入时按钮禁用 → 评估调用 /api/resume/evaluate → 结果与导出按钮出现。
+  const originalFetch = globalThis.fetch
+  const originalWarn = console.error
+  const originalCreateObjectURL = URL.createObjectURL
+  const originalRevokeObjectURL = URL.revokeObjectURL
+  const originalAnchorClick = dom.window.HTMLAnchorElement.prototype.click
+
+  let evaluateCalls = 0
+  let exportBlob
+  let exportName
+
+  globalThis.fetch = async (url, init) => {
+    const target = String(url)
+    if (target.includes('/dsh-get-jobs/health')) {
+      return {
+        ok: true, status: 200, json: async () => ({
+          plugin: 'dsh-get-jobs', baseUrl: 'http://127.0.0.1:9527',
+          reachable: true, state: 'ready', managed: true, pid: 1, message: '后端在线',
+        }),
+      }
+    }
+    if (target.includes('/api/resume/evaluate') && init?.method === 'POST') {
+      evaluateCalls += 1
+      const body = {
+        evaluation: {
+          score: 78,
+          level: '良好',
+          summary: '技术栈匹配度高，项目成果量化不足',
+          dimensions: [
+            { name: '内容完整性', score: 82, comment: '经历齐全' },
+            { name: '成果量化', score: 65, comment: '缺少指标' },
+          ],
+          strengths: ['Java 技术栈完整'],
+          issues: ['项目成果缺少量化数据'],
+          suggestions: ['补充 QPS 与耗时对比'],
+          keywords: { hit: ['Java', 'Spring Cloud'], missing: ['Kubernetes'] },
+          generatedAt: '2026-11-05 02:10',
+        },
+        meta: { format: 'pdf', chars: 1200 },
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify(body), json: async () => body }
+    }
+    if (target.includes('/api/resume/parse')) {
+      const body = {
+        draft: { introduce: '我是一名 Java 后端工程师', prompt: '写一句 50-80 字开场白', sayHi: '您好，我有 3 年 Java 经验。' },
+        meta: { format: 'pdf', chars: 1200 },
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify(body), json: async () => body }
+    }
+    if (target.includes('/api/ai/config')) {
+      const body = { success: true, data: { id: 1, introduce: '我是一名 Java 后端工程师', prompt: '写一句开场白' } }
+      return { ok: true, status: 200, text: async () => JSON.stringify(body), json: async () => body }
+    }
+    return { ok: false, status: 503, text: async () => 'unavailable', json: async () => ({}) }
+  }
+  dom.window.fetch = globalThis.fetch
+  console.error = () => {}
+  URL.createObjectURL = (blob) => { exportBlob = blob; return 'blob:resume-report' }
+  URL.revokeObjectURL = () => {}
+  dom.window.HTMLAnchorElement.prototype.click = function () { exportName = this.download }
+
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  await React.act(async () => { root.render(React.createElement(mainEntry.component)) })
+
+  const resumeTab = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '简历')
+  await React.act(async () => { resumeTab.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+  await React.act(async () => { await new Promise((done) => setTimeout(done, 80)) })
+
+  const text = () => container.textContent ?? ''
+  const evalButton = () => [...container.querySelectorAll('button')].find((node) => node.textContent?.includes('AI 评估打分'))
+
+  check('简历：评估按钮存在', Boolean(evalButton()))
+  check('简历：未导入简历时评估按钮禁用', evalButton()?.disabled === true)
+
+  const fileInput = container.querySelector('input[type=file]')
+  const file = new dom.window.File(['dummy resume text'], 'resume.pdf', { type: 'application/pdf' })
+  Object.defineProperty(fileInput, 'files', { configurable: true, value: [file] })
+  await React.act(async () => {
+    fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+    await new Promise((done) => setTimeout(done, 120))
+  })
+  check('简历：导入后草稿回填到输入框',
+    [...container.querySelectorAll('textarea')].some((node) => node.value.includes('Java 后端工程师')))
+
+  const readyButton = evalButton()
+  check('简历：导入后评估按钮可用', readyButton?.disabled === false)
+  await React.act(async () => {
+    readyButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+    await new Promise((done) => setTimeout(done, 180))
+  })
+
+  check('简历：调用 /api/resume/evaluate', evaluateCalls === 1, `calls=${evaluateCalls}`)
+  check('简历：显示总分', text().includes('78'), text().slice(0, 300))
+  check('简历：显示分项评价', text().includes('内容完整性') && text().includes('成果量化'))
+  check('简历：显示修改建议', text().includes('补充 QPS 与耗时对比'))
+  check('简历：提示缺失关键词', text().includes('缺 Kubernetes'))
+
+  const exportButton = [...container.querySelectorAll('button')].find((node) => node.textContent?.includes('导出 HTML 报告'))
+  check('简历：评估后出现导出按钮', Boolean(exportButton))
+  if (exportButton) {
+    await React.act(async () => { exportButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    check('简历：导出文件名是 HTML', String(exportName ?? '').includes('.html'), String(exportName))
+    check('简历：导出 MIME 是 text/html', String(exportBlob?.type ?? '').includes('text/html'), String(exportBlob?.type))
+  }
+
+  await React.act(async () => { root.unmount() })
+  container.remove()
+  globalThis.fetch = originalFetch
+  URL.createObjectURL = originalCreateObjectURL
+  URL.revokeObjectURL = originalRevokeObjectURL
+  dom.window.HTMLAnchorElement.prototype.click = originalAnchorClick
   console.error = originalWarn
 }
 

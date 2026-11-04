@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
+ * @author mattan
  * 智联招聘自动投递 - Playwright版本
  */
 @Slf4j

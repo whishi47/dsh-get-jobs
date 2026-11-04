@@ -4,6 +4,9 @@ import lombok.Data;
 
 import java.util.List;
 
+/**
+ * @author mattan
+ */
 @Data
 public class LiepinConfig {
     /**

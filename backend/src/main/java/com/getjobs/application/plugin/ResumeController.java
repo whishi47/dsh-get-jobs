@@ -33,10 +33,14 @@ public class ResumeController {
 
     private final ResumeTextExtractor extractor;
     private final ResumeDraftService draftService;
+    private final ResumeEvaluateService evaluateService;
 
-    public ResumeController(ResumeTextExtractor extractor, ResumeDraftService draftService) {
+    public ResumeController(ResumeTextExtractor extractor,
+                            ResumeDraftService draftService,
+                            ResumeEvaluateService evaluateService) {
         this.extractor = extractor;
         this.draftService = draftService;
+        this.evaluateService = evaluateService;
     }
 
     /** 上传并解析简历。 */
@@ -84,6 +88,51 @@ public class ResumeController {
         body.put("draft", draftBody);
         body.put("meta", meta);
         return ResponseEntity.ok(body);
+    }
+
+    /**
+     * 评估简历并打分。
+     *
+     * <p>和 /parse 分开：解析只出草稿、几乎必成功；评估要模型给结构化评分，
+     * 可能因为模型不听话而失败，所以单独一个端点、单独的错误码（502），
+     * 前端可以只把这张卡片标红，不影响已经解析出来的草稿。
+     */
+    @PostMapping("/evaluate")
+    public ResponseEntity<Map<String, Object>> evaluate(
+            @RequestParam(value = "file", required = false) MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return error(HttpStatus.BAD_REQUEST, "没有收到文件，请在表单的 file 字段上传简历。");
+        }
+
+        ResumeTextExtractor.ExtractResult extracted;
+        try (InputStream stream = file.getInputStream()) {
+            extracted = extractor.extract(file.getOriginalFilename(), file.getSize(), stream);
+        } catch (ResumeTextExtractor.ScannedDocumentException error) {
+            return error(HttpStatus.UNPROCESSABLE_ENTITY, error.getMessage());
+        } catch (ResumeTextExtractor.UnsupportedResumeException error) {
+            return error(HttpStatus.BAD_REQUEST, error.getMessage());
+        } catch (IOException error) {
+            log.warn("读取上传文件失败: {}", error.getMessage());
+            return error(HttpStatus.BAD_REQUEST, "读取文件失败：" + error.getMessage());
+        }
+
+        try {
+            Map<String, Object> evaluation = evaluateService.evaluate(extracted.text());
+
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("format", extracted.format());
+            meta.put("pages", extracted.pages());
+            meta.put("chars", extracted.text().length());
+            meta.put("truncated", extracted.truncated());
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("evaluation", evaluation);
+            body.put("meta", meta);
+            return ResponseEntity.ok(body);
+        } catch (IllegalStateException error) {
+            // 502：上游模型的问题，不是用户文件的问题
+            return error(HttpStatus.BAD_GATEWAY, error.getMessage());
+        }
     }
 
     /** 超过 multipart 上限时给一条明确提示；默认实现会返回 500，前端只能看到"解析失败"。 */

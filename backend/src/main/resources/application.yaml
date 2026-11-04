@@ -1,13 +1,13 @@
 spring:
   application:
-    name: get_jobs
+    name: dsh-get-jobs-backend
   profiles:
     active: dev
   info:
     app:
-      name: Get Jobs
-      version: 2.0.1
-      description: Get Jobs Backend API
+      name: dsh-get-jobs backend
+      version: 0.2.0
+      description: Job application automation backend for DeepSeek Harness
   banner:
     charset: UTF-8
     location: classpath:banner.txt

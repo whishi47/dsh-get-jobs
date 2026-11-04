@@ -67,6 +67,51 @@ export interface LoginState {
   opening: boolean
 }
 
+/** One AI usage bucket (today or current run). */
+export interface AiUsageBucket {
+  calls: number
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+}
+
+/** AI usage plus the budget limits that produced it. */
+export interface AiUsage {
+  today: AiUsageBucket & { day?: string }
+  run: AiUsageBucket
+  limits: {
+    run: number
+    daily: number
+    maxTokens: number
+    disableThinking: boolean
+    greetingPool: boolean
+    greetingBatch: number
+  }
+  model?: string
+  thinkingSwitchSupported?: boolean
+}
+
+/** One scoring dimension in a resume evaluation. */
+export interface ResumeDimension {
+  name: string
+  score: number
+  comment: string
+}
+
+/** Structured resume evaluation returned by the backend. */
+export interface ResumeEvaluation {
+  score: number
+  level: string
+  summary: string
+  dimensions: ResumeDimension[]
+  strengths: string[]
+  issues: string[]
+  suggestions: string[]
+  keywords: { hit: string[]; missing: string[] }
+  generatedAt?: string
+  truncated?: boolean
+}
+
 /** Metadata for the uploaded Boss resume image. */
 export interface ResumeImageMeta {
   exists: boolean
@@ -268,6 +313,48 @@ export class JobsApi {
     const raw = await this.call<Record<string, unknown>>('GET', `/api/ai/chat?content=${encodeURIComponent(instruction)}`)
     const data = raw['data'] ?? raw
     return typeof data === 'string' ? data : String(data ?? '')
+  }
+
+  /**
+   * AI usage and budget limits (`GET /api/ai/usage`).
+   *
+   * `today` is persisted per day in SQLite, `run` is in-memory and resets when a
+   * delivery starts. Powers the "AI 用量" card in Settings.
+   */
+  async aiUsage(): Promise<AiUsage> {
+    const raw = await this.call<Record<string, unknown>>('GET', '/api/ai/usage')
+    return (raw['data'] as AiUsage | undefined) ?? (raw as unknown as AiUsage)
+  }
+
+  /**
+   * Ask the model to score a resume (`POST /api/resume/evaluate`, multipart).
+   *
+   * Kept separate from {@link JobsApi.uploadResumeImage}: that one stores an
+   * image for Boss, this one only reads the file, extracts text and returns a
+   * structured evaluation. Nothing is persisted server-side.
+   */
+  async evaluateResume(file: File): Promise<{ evaluation: ResumeEvaluation; meta?: Record<string, unknown> }> {
+    const body = new FormData()
+    body.append('file', file)
+    let response: Response
+    try {
+      response = await fetch(`${this.baseUrl}/api/resume/evaluate`, { method: 'POST', body })
+    } catch {
+      throw new ApiError('无法连接后端', '后端进程可能未启动')
+    }
+    const text = await response.text()
+    let parsed: unknown
+    try {
+      parsed = text ? JSON.parse(text) : undefined
+    } catch {
+      parsed = text
+    }
+    if (!response.ok) {
+      const record = (parsed ?? {}) as Record<string, unknown>
+      const message = typeof record['message'] === 'string' ? record['message'] : ''
+      throw new ApiError(message || `评估失败（${response.status}）`)
+    }
+    return parsed as { evaluation: ResumeEvaluation; meta?: Record<string, unknown> }
   }
 
   /** Upload or replace the Boss resume image (multipart, field name `file`). */

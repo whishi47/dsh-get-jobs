@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
+ * @author mattan
  *
  * Boss配置数据类
  * 配置加载由 BossConfigLoaderService 负责

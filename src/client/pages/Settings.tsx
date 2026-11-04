@@ -37,6 +37,23 @@ const CORE_KEYS = ['BASE_URL', 'API_KEY', 'MODEL', 'HOOK_URL', 'BOT_IS_SEND'] as
 /** Blacklist page size; long lists made the settings page unusable. */
 const BLACKLIST_PAGE_SIZE = 10
 
+/**
+ * AI 成本相关的配置键。
+ *
+ * 和 CORE_KEYS 分开：核心键决定"能不能调通模型"，这几个决定"会不会把账单跑爆"。
+ * 值为空时后端会用自己的默认值（单次运行 30 次 / 每日 300 次 / 单次输出 300 token）。
+ */
+const AI_COST_KEYS = [
+  'AI_RUN_LIMIT',
+  'AI_DAILY_LIMIT',
+  'AI_MAX_TOKENS',
+  'AI_GREETING_BATCH',
+  'AI_GREETING_POOL',
+] as const
+
+/** 池化开关缺省为开：老库里没有这个键时也要按省钱模式跑。 */
+const AI_POOL_DEFAULT = '1'
+
 /** Inner tabs — one per concern, each fits a screen without scrolling. */
 type SettingsTab = 'system' | 'ai' | 'blacklist' | 'custom'
 
@@ -46,6 +63,27 @@ const TAB_ITEMS: Array<{ value: SettingsTab; label: string }> = [
   { value: 'blacklist', label: '黑名单' },
   { value: 'custom', label: '自定义配置' },
 ]
+
+/** One number tile in the AI usage card. */
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }): React.ReactElement {
+  return (
+    <div style={{
+      padding: '10px 12px',
+      borderRadius: tokens.radius.md,
+      border: `1px solid ${tokens.color.border}`,
+      background: tokens.color.surface,
+    }}>
+      <div style={{ fontSize: tokens.font.xs, color: tokens.color.textMuted }}>{label}</div>
+      <div style={{ fontSize: tokens.font.lg, fontWeight: 700, marginTop: 2 }}>{value}</div>
+      {hint ? <div style={{ fontSize: tokens.font.xs, color: tokens.color.textFaint, marginTop: 2 }}>{hint}</div> : null}
+    </div>
+  )
+}
+
+/** `12345` → `12,345`; missing values render as `0`. */
+function formatNumber(value: number | undefined): string {
+  return Number(value ?? 0).toLocaleString('zh-CN')
+}
 
 /** Escape one CSV cell; quotes are doubled per RFC 4180. */
 function csvCell(value: string): string {
@@ -143,6 +181,49 @@ export function Settings(): React.ReactElement {
       setConnSaved(new Date().toLocaleTimeString('zh-CN'))
       appConfig.reload()
       ready.reload()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // ------------------------------------------------------------ AI 用量与预算
+  const usage = useResource(
+    async () => (api ? api.aiUsage() : undefined),
+    [backend.revision, api?.baseUrl],
+  )
+  const [costForm, setCostForm] = useState<Record<string, string>>({})
+  const [costSaved, setCostSaved] = useState<string | undefined>(undefined)
+
+  /** 某个成本键的"已保存值"；池化开关缺省为开。 */
+  function costBaseline(key: string): string {
+    const stored = appConfig.data?.[key]
+    if (stored !== undefined && stored !== '') return stored
+    return key === 'AI_GREETING_POOL' ? AI_POOL_DEFAULT : ''
+  }
+
+  useEffect(() => {
+    if (!appConfig.data) return
+    const next: Record<string, string> = {}
+    for (const key of AI_COST_KEYS) next[key] = costBaseline(key)
+    setCostForm(next)
+  }, [appConfig.data])
+
+  const costDirty = Boolean(appConfig.data)
+    && AI_COST_KEYS.some((key) => (costForm[key] ?? '') !== costBaseline(key))
+
+  async function saveCost(): Promise<void> {
+    if (!api) return
+    setBusy(true)
+    setError(undefined)
+    try {
+      const patch: Record<string, string> = {}
+      for (const key of AI_COST_KEYS) patch[key] = costForm[key] ?? costBaseline(key)
+      await api.saveAppConfig(patch)
+      setCostSaved(new Date().toLocaleTimeString('zh-CN'))
+      appConfig.reload()
+      usage.reload()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
     } finally {
@@ -339,8 +420,104 @@ export function Settings(): React.ReactElement {
   }
 
   function renderAi(): React.ReactNode {
+    const today = usage.data?.today
+    const run = usage.data?.run
+    const limits = usage.data?.limits
+    const dailyLimit = limits?.daily ?? 0
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.space(3) }}>
+        <Card
+          title="AI 用量与预算"
+          actions={(
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {costDirty ? <Badge tone="warning">有未保存改动</Badge> : costSaved ? <Badge tone="success">已保存 {costSaved}</Badge> : null}
+              <Button icon="refresh" onClick={() => usage.reload()} disabled={usage.loading}>刷新用量</Button>
+              <Button tone="primary" icon="check" onClick={saveCost} disabled={!costDirty || busy || !api}>
+                {busy ? '保存中…' : '保存'}
+              </Button>
+            </div>
+          )}
+        >
+          {usage.loading ? <Skeleton height={140} /> : usage.data ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.space(3) }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: tokens.space(3) }}>
+                <Stat label="今日调用" value={`${today?.calls ?? 0} 次`} hint={today?.day} />
+                <Stat
+                  label="今日 Token"
+                  value={formatNumber(today?.totalTokens)}
+                  hint={`输入 ${formatNumber(today?.promptTokens)} / 输出 ${formatNumber(today?.completionTokens)}`}
+                />
+                <Stat label="本次运行" value={`${run?.calls ?? 0} 次`} hint={`${formatNumber(run?.totalTokens)} tokens`} />
+                <Stat
+                  label="今日剩余额度"
+                  value={dailyLimit > 0 ? `${Math.max(0, dailyLimit - (today?.calls ?? 0))} 次` : '不限'}
+                  hint={dailyLimit > 0 ? `上限 ${dailyLimit} 次` : '未设置上限'}
+                />
+              </div>
+
+              <div style={{ fontSize: tokens.font.xs, color: tokens.color.textMuted }}>
+                当前模型：<strong>{usage.data.model || '未配置'}</strong>
+                {usage.data.thinkingSwitchSupported === false
+                  ? ' · 该接口不支持关闭思考参数，已自动跳过'
+                  : ' · 已尝试关闭思维链，避免为思考过程付费'}
+                {limits?.maxTokens ? ` · 单次输出上限 ${limits.maxTokens} tokens` : ''}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
+                <Field label="单次运行调用上限" hint="一次投递最多调几次，0 = 不限">
+                  <Input
+                    value={costForm['AI_RUN_LIMIT'] ?? ''}
+                    placeholder="30"
+                    onChange={(event) => { setCostForm((prev) => ({ ...prev, AI_RUN_LIMIT: event.target.value })); setCostSaved(undefined) }}
+                  />
+                </Field>
+                <Field label="每日调用上限" hint="按自然日累计，0 = 不限">
+                  <Input
+                    value={costForm['AI_DAILY_LIMIT'] ?? ''}
+                    placeholder="300"
+                    onChange={(event) => { setCostForm((prev) => ({ ...prev, AI_DAILY_LIMIT: event.target.value })); setCostSaved(undefined) }}
+                  />
+                </Field>
+                <Field label="单次输出 max_tokens" hint="越小越省，招呼语 200-300 足够">
+                  <Input
+                    value={costForm['AI_MAX_TOKENS'] ?? ''}
+                    placeholder="300"
+                    onChange={(event) => { setCostForm((prev) => ({ ...prev, AI_MAX_TOKENS: event.target.value })); setCostSaved(undefined) }}
+                  />
+                </Field>
+                <Field label="每批生成条数" hint="一次生成多条轮换，越大调用越少">
+                  <Input
+                    value={costForm['AI_GREETING_BATCH'] ?? ''}
+                    placeholder="10"
+                    onChange={(event) => { setCostForm((prev) => ({ ...prev, AI_GREETING_BATCH: event.target.value })); setCostSaved(undefined) }}
+                  />
+                </Field>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: tokens.font.sm }}>
+                <Toggle
+                  checked={(costForm['AI_GREETING_POOL'] ?? AI_POOL_DEFAULT) === '1'}
+                  label="批量生成招呼语"
+                  onChange={(next) => {
+                    setCostForm((prev) => ({ ...prev, AI_GREETING_POOL: next ? '1' : '0' }))
+                    setCostSaved(undefined)
+                  }}
+                />
+                <span style={{ fontWeight: 600 }}>批量生成招呼语</span>
+                <span style={{ color: tokens.color.textMuted }}>
+                  开启后一批岗位共用一组招呼语，调用次数从「每岗一次」降到「每批一次」；关闭则每岗单独生成（更个性化，也更费钱）
+                </span>
+              </div>
+            </div>
+          ) : (
+            <Empty
+              title="读不到 AI 用量"
+              hint="确认后端已启动（GET /api/ai/usage）"
+              action={<Button onClick={usage.reload}>重试</Button>}
+            />
+          )}
+        </Card>
+
         <Card
           title="接口与推送"
           actions={(
@@ -375,12 +552,20 @@ export function Settings(): React.ReactElement {
                       <Button onClick={() => setShowKey((value) => !value)}>{showKey ? '隐藏' : '显示'}</Button>
                     </div>
                   </Field>
-                  <Field label="模型（MODEL）" hint="如 deepseek-chat / deepseek-reasoner">
-                    <Input
-                      value={connForm['MODEL'] ?? ''}
-                      placeholder="deepseek-chat"
-                      onChange={(event) => { setConnForm((prev) => ({ ...prev, MODEL: event.target.value })); setConnSaved(undefined) }}
-                    />
+                  <Field label="模型（MODEL）" hint="推荐 deepseek-flash：便宜、够快，配合下面的预算闸门足够用">
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Input
+                        value={connForm['MODEL'] ?? ''}
+                        placeholder="deepseek-flash"
+                        onChange={(event) => { setConnForm((prev) => ({ ...prev, MODEL: event.target.value })); setConnSaved(undefined) }}
+                      />
+                      <Button
+                        onClick={() => { setConnForm((prev) => ({ ...prev, MODEL: 'deepseek-flash' })); setConnSaved(undefined) }}
+                        title="填入推荐模型"
+                      >
+                        用推荐
+                      </Button>
+                    </div>
                   </Field>
                 </div>
               </div>

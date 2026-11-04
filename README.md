@@ -150,6 +150,9 @@ dsh plugin --profile web add "github:whishi47/dsh-get-jobs#master"
 | AI 打招呼语没生成 / 写得很怪 | 先去「设置 → AI 设置」确认 Key、接口、模型填对了；招呼语太短可以在「投递配置」里点 **AI 润色** 让它改写 |
 | 勾了「发送图片简历」但没发出去 | 需要在「投递配置」里**先上传**简历图片（有预览缩略图才算成功），不是只勾开关 |
 | 要装 MySQL / Redis 吗？ | 都不用。数据就一个 SQLite 文件 |
+| **AI 会不会很费钱？怎么控制？** | 默认已经开了三层保护：单次输出上限 300 token、单次运行/每日调用上限、招呼语批量池化（一批岗位共用一组，调用次数从「每岗一次」降到「每批一次」）。「设置 → AI 设置」能看到今日和本次运行用了多少 token，预算随时可调 |
+| **为什么我的招呼语开始重复了？** | 默认开启了「批量生成招呼语」：一次生成一组轮换使用，用来压成本。想每个岗位都单独生成，去「设置 → AI 设置」关掉这个开关即可（更个性化，也更费钱） |
+| 简历评估会额外花钱吗？ | 会消耗 1 次大模型调用（约为一次招呼语生成的量级）。不点「AI 评估打分」就不会产生这部分费用 |
 | 会不会把我的简历 / Key 传到别人服务器？ | 数据存本机；AI 请求发往**你自己配置**的接口地址。别把运行时的 `db/getjobs.db` 上传或分享出去，里面可能有你的配置 |
 | 会不会封号？ | 有风险。请控制频率、遵守平台规则，别用它做批量代投。风险自担 |
 | 我想改代码 / 二次开发 | 看下面的「开发者模式」，克隆仓库后 `npm install --legacy-peer-deps` 即可 |
@@ -172,6 +175,8 @@ dsh plugin --profile web add "github:whishi47/dsh-get-jobs#master"
 | **数据** | 岗位表 | 归一化岗位数据，单平台 / 四平台合并，xlsx 流式写出 |
 | **简历** | 解析与草稿 | PDF / DOCX / TXT / MD → 大模型出 AI 配置草稿 → 预览编辑 → 一键写回 |
 | **面板** | 原生六页 | 概览 / 投递配置 / 运行 / 数据 / 简历 / 设置，无 iframe、无额外端口，每页都能滚动 |
+| **简历** | AI 评估打分 | 总分 + 五维评分 + 优势 / 待改进 / 修改建议 + 关键词命中，可导出独立 HTML 报告（打印即成 PDF）|
+| **成本** | 用量与预算 | 今日 / 本次运行的调用次数与 token 可见；单次运行与每日限额可调，超限自动回退固定招呼语 |
 | **对话** | 聊天里启停 | 提供后端状态 / 启停工具，受 `mutations` 闸门约束（默认需确认） |
 
 ---
@@ -276,8 +281,8 @@ npm run check      # build + gates + test 一次跑完
    ./gradlew bootJar --no-daemon
    ```
 2. **同步产物**：把 `backend/build/libs/*.jar` 复制为 `release-assets/backend.jar`；`backend/assets/getjobs.db.template` 已只含表结构，直接复制为 `release-assets/getjobs.db.template`（**切勿**用运行时的 `db/getjobs.db`，其中含 API Key 与登录态）。
-3. **上传 GitHub Release**：`gh release upload v0.1.0 release-assets/backend.jar release-assets/getjobs.db.template --clobber`
-4. 如需新版本，打新 tag（如 `v0.1.1`）并同步更新 `CHANGELOG.md`。
+3. **上传 GitHub Release**：`gh release upload v0.2.0 release-assets/backend.jar release-assets/getjobs.db.template --clobber`
+4. 如需新版本，打新 tag（如 `v0.2.1`）并同步更新 `CHANGELOG.md`。
 
 > 插件运行时默认从 GitHub Release 拉取这两个文件；网络不便可在配置里改 `jarUrl` / `dbUrl`，或用 `jarPath` 指向本地 jar。
 
