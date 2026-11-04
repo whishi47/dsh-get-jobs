@@ -178,8 +178,8 @@ npm run check      # build + gates + test 一次跑完
 
 - **协议文件**：本项目采用 [PolyForm Noncommercial 1.0.0](LICENSE) 协议，**明确禁止任何商业用途**，仅允许个人学习交流、技术参考与辅助求职投递之非商业使用、复制、修改与再分发。
 - **使用边界**：如将本项目用于任何商业目的，须事先取得作者书面授权。
-- **署名要求**：再分发须保留原作者署名（mattan / 邱高华）与许可证声明，不得移除。
+- **署名要求**：再分发须保留原作者署名（mattan）与许可证声明，不得移除。
 
 ---
 
-Copyright © 2026 mattan (邱高华). All Rights Reserved.
+Copyright © 2026 mattan. All Rights Reserved.
