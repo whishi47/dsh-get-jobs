@@ -348,8 +348,8 @@ npm run check      # build + gates + test 一次跑完
    ./gradlew bootJar --no-daemon
    ```
 2. **同步产物**：把 `backend/build/libs/*.jar` 复制为 `release-assets/backend.jar`；`backend/assets/getjobs.db.template` 已只含表结构，直接复制为 `release-assets/getjobs.db.template`（**切勿**用运行时的 `db/getjobs.db`，其中含 API Key 与登录态）。
-3. **上传 GitHub Release**：`gh release upload v0.2.0 release-assets/backend.jar release-assets/getjobs.db.template --clobber`
-4. 如需新版本，打新 tag（如 `v0.2.1`）并同步更新 `CHANGELOG.md`。
+3. **上传 GitHub Release**：`gh release upload <version> release-assets/backend.jar release-assets/getjobs.db.template --clobber`
+4. 如需新版本，打新 tag（如 `v0.3.1`）并同步更新 `CHANGELOG.md`。
 
 > 插件运行时默认从 GitHub Release 拉取这两个文件；网络不便可在配置里改 `jarUrl` / `dbUrl`，或用 `jarPath` 指向本地 jar。
 

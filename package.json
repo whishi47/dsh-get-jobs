@@ -13,6 +13,14 @@
   ],
   "license": "PolyForm-Noncommercial-1.0.0",
   "author": "mattan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whishi47/dsh-get-jobs.git"
+  },
+  "homepage": "https://github.com/whishi47/dsh-get-jobs#readme",
+  "bugs": {
+    "url": "https://github.com/whishi47/dsh-get-jobs/issues"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
