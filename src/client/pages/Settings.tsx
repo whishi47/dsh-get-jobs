@@ -75,7 +75,7 @@ const RECOMMENDED_GREETING_PROMPT = [
   '2. 第一句点明与该岗位最匹配的 1-2 项技术栈或业务经验（从 JD 里挑，不要罗列）；',
   '3. 第二句用自我介绍里真实存在的成果支撑，尽量带数字或规模（并发量、QPS、数据量、团队人数），没有数字就用具体职责代替，不得编造；',
   '4. 最后一句表达求职意向与沟通意愿；',
-  '5. 不要出现公司名、岗位名称，不要堆客套话，不要 emoji；',
+  '5. 不要出现公司名、岗位名称，不要写「您好」这类开场寒暄（系统会在前面拼一段固定开头），不要堆客套话，不要 emoji；',
   '6. 只输出消息正文，不要标题、引号或解释。',
 ].join('\n')
 
@@ -150,6 +150,9 @@ export function Settings(): React.ReactElement {
     [backend.revision, api?.baseUrl],
   )
   const [aiForm, setAiForm] = useState<{ introduce: string; prompt: string }>({ introduce: '', prompt: '' })
+  // 固定开头存在 config 表（GREETING_PREFIX），不属于 ai 表，单独保存
+  const [prefixForm, setPrefixForm] = useState<string | undefined>(undefined)
+  const [prefixNotice, setPrefixNotice] = useState<string | undefined>(undefined)
   const [aiSaved, setAiSaved] = useState<string | undefined>(undefined)
 
   useEffect(() => {
@@ -160,6 +163,21 @@ export function Settings(): React.ReactElement {
   const aiDirty = Boolean(profile.data) && (
     aiForm.introduce !== (profile.data?.introduce ?? '') || aiForm.prompt !== (profile.data?.prompt ?? '')
   )
+
+  async function savePrefix(): Promise<void> {
+    if (!api) return
+    setBusy(true)
+    setPrefixNotice(undefined)
+    try {
+      await api.saveAppConfig({ GREETING_PREFIX: prefixForm ?? '' })
+      setPrefixNotice('已保存，下次投递生效')
+      appConfig.reload()
+    } catch (caught) {
+      setPrefixNotice(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function saveAi(): Promise<void> {
     if (!api) return
@@ -184,6 +202,13 @@ export function Settings(): React.ReactElement {
   const [connForm, setConnForm] = useState<Record<string, string>>({})
   const [showKey, setShowKey] = useState(false)
   const [connSaved, setConnSaved] = useState<string | undefined>(undefined)
+
+  // 固定开头从配置表回填；必须放在 appConfig 声明之后，否则渲染时是 TDZ
+  useEffect(() => {
+    if (appConfig.data && prefixForm === undefined) {
+      setPrefixForm(appConfig.data['GREETING_PREFIX'] ?? '')
+    }
+  }, [appConfig.data, prefixForm])
 
   useEffect(() => {
     if (!appConfig.data) return
@@ -800,6 +825,19 @@ export function Settings(): React.ReactElement {
           </div>
           {profile.loading ? <Skeleton height={160} /> : profile.data ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.space(3) }}>
+              <Field label="固定开头（GREETING_PREFIX）" hint="每次首次沟通都会拼在正文最前面；留空则不拼。改完点右边的保存">
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <Input
+                    value={prefixForm ?? ''}
+                    placeholder="您好，能否看一下我的简历，这是我的作品集 https://…"
+                    onChange={(event) => { setPrefixForm(event.target.value); setPrefixNotice(undefined) }}
+                  />
+                  <Button onClick={savePrefix} disabled={!api || busy}>保存开头</Button>
+                  {prefixNotice ? (
+                    <span style={{ fontSize: tokens.font.xs, color: tokens.color.textMuted, whiteSpace: 'nowrap' }}>{prefixNotice}</span>
+                  ) : null}
+                </div>
+              </Field>
               <Field label="自我介绍（introduce）" hint="你的技术栈、项目成果；带上数字（并发量 / QPS / 数据量）效果最好，100-200 字">
                 <Textarea
                   value={aiForm.introduce}

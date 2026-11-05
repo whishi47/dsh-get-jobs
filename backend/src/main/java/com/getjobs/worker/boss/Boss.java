@@ -1144,6 +1144,24 @@ public class Boss {
         log.info("重试结束：成功 {} / {}", succeeded, pending.size());
     }
 
+    /**
+     * 在招呼语正文前拼固定开头（如自我介绍 + 作品集链接）。
+     *
+     * <p>放在发送前而不是提示词里，是因为模型经常"忘记"照抄，而这句话必须每次都出现。
+     * 值为空或正文已经带了这段开头时不重复添加。
+     */
+    private String applyGreetingPrefix(String message) {
+        String prefix = aiService.getStringSetting("GREETING_PREFIX", "");
+        if (prefix == null || prefix.isBlank()) return message;
+        String head = prefix.trim();
+        String body = message == null ? "" : message.trim();
+        if (body.isEmpty()) return head;
+        // 模型自己写了开头就不要再拼一遍（比对前 12 个字足够）
+        String probe = head.length() > 12 ? head.substring(0, 12) : head;
+        if (body.startsWith(head) || body.startsWith(probe)) return body;
+        return head + "\n" + body;
+    }
+
     /** 记录一次「没投出去」。原因会出现在面板的失败统计里，落库失败也不影响投递。 */
     private void recordFailure(Job job, String jobUrl, String reason) {
         try {
@@ -1278,7 +1296,11 @@ public class Boss {
                     aiMessage = decision.message();
                 }
             }
-            String message = repeatChat ? repeatMessage : (isValidString(aiMessage) ? aiMessage : config.getSayHi());
+            // 首次沟通：AI 正文前面拼一段固定开头（配置项 GREETING_PREFIX，可为空）。
+            // 重试沟通是自己写的话术，不拼，避免重复自我介绍。
+            String message = repeatChat
+                    ? repeatMessage
+                    : applyGreetingPrefix(isValidString(aiMessage) ? aiMessage : config.getSayHi());
 
             // 6. 输入打招呼语
             Locator input = inputLocator.first();

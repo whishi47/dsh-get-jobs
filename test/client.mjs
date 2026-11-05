@@ -1498,6 +1498,7 @@ console.log('\n[settings: recommended greeting prompt]')
   // 招呼语太短的根因通常是提示词里写死了字数。这里保证「用推荐提示词」能一键回填 80-120 字版本。
   const originalFetch = globalThis.fetch
   const originalWarn = console.error
+  let postedConfig
   const jsonOk = (payload) => ({
     ok: true,
     status: 200,
@@ -1505,7 +1506,7 @@ console.log('\n[settings: recommended greeting prompt]')
     json: async () => payload,
   })
 
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, init) => {
     const target = String(url)
     if (target.includes('/dsh-get-jobs/health')) {
       return jsonOk({
@@ -1513,13 +1514,19 @@ console.log('\n[settings: recommended greeting prompt]')
         reachable: true, state: 'ready', managed: true, pid: 1, message: '后端在线',
       })
     }
+    if (target.includes('/api/config') && init?.method === 'POST') {
+      postedConfig = JSON.parse(String(init.body ?? '{}'))
+      return jsonOk({ success: true })
+    }
     if (target.includes('/api/ai/config')) {
       return jsonOk({ success: true, data: { id: 1, introduce: '3 年 Java 后端', prompt: '请写一句 30 字以内的开场白' } })
     }
     if (target.includes('/api/ai/usage')) {
       return jsonOk({ success: true, data: { today: { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0 }, run: { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0 }, limits: { run: 30, daily: 300, maxTokens: 300, disableThinking: true, greetingPool: true, greetingBatch: 10 }, model: 'deepseek-flash', thinkingSwitchSupported: true } })
     }
-    if (target.includes('/api/config')) return jsonOk({ success: true, data: {} })
+    if (target.includes('/api/config')) {
+      return jsonOk({ success: true, data: { GREETING_PREFIX: '您好，这是我的作品集 https://example.com/portfolio' } })
+    }
     if (target.includes('/status')) return jsonOk({ isRunning: false, isLoggedIn: true })
     if (target.includes('/api/system/ready')) return jsonOk({ ready: true, checks: [] })
     if (target.includes('/api/playwright/status')) return jsonOk({ ready: true })
@@ -1554,6 +1561,27 @@ console.log('\n[settings: recommended greeting prompt]')
     check('推荐提示词要求三段式（技术栈/成果/意向）',
       Boolean(filled) && filled.includes('技术栈') && filled.includes('成果') && filled.includes('求职意向'),
       String(filled).slice(0, 200))
+  }
+
+  // 固定开头：存在 config 表，不走 ai 接口
+  const prefixInput = [...container.querySelectorAll('input')].find((node) => (node.value ?? '').includes('example.com'))
+  check('固定开头从配置回填', Boolean(prefixInput), [...container.querySelectorAll('input')].map((node) => node.value?.slice(0, 16)).join(' | '))
+  if (prefixInput) {
+    const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set
+    await React.act(async () => {
+      setValue.call(prefixInput, '您好，能否看一下我的简历 https://example.com/cv')
+      prefixInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    })
+    const savePrefixBtn = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '保存开头')
+    check('有保存开头按钮', Boolean(savePrefixBtn))
+    if (savePrefixBtn) {
+      await React.act(async () => {
+        savePrefixBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+        await new Promise((done) => setTimeout(done, 90))
+      })
+      check('固定开头写进 GREETING_PREFIX', postedConfig?.GREETING_PREFIX === '您好，能否看一下我的简历 https://example.com/cv', JSON.stringify(postedConfig))
+      check('保存开头后给出提示', text().includes('已保存，下次投递生效'), text().slice(0, 600))
+    }
   }
 
   await React.act(async () => { root.unmount() })

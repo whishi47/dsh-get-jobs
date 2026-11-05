@@ -296,6 +296,12 @@ public class AiService {
     }
 
     /** 读布尔配置，兼容 1/0、true/false、yes/no、on/off。 */
+    /** 读字符串配置；缺失或空白时返回 fallback。 */
+    public String getStringSetting(String key, String fallback) {
+        String raw = configService.getConfigValue(key);
+        return (raw == null || raw.isBlank()) ? fallback : raw.trim();
+    }
+
     public boolean getBoolSetting(String key, boolean fallback) {
         String raw = configService.getConfigValue(key);
         if (raw == null || raw.isBlank()) return fallback;

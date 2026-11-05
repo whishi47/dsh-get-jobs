@@ -223,6 +223,7 @@ It is cached afterwards, so **later runs work offline**. Playwright's browser is
 | **Zero effort** | Clean shutdown | Only kills processes **this plugin started**; your own running instance is untouched |
 | **Zero effort** | Visible status | Health endpoint for the panel, redacted log tail for diagnostics |
 | **Delivery** | Four platforms | Boss Zhipin / Liepin / 51job / Zhaopin, per-platform fields, single-column layout when a form is short |
+| **Delivery** | Fixed opening | `GREETING_PREFIX` is prepended to every first-contact greeting (e.g. intro + portfolio link) instead of relying on the model to repeat it; follow-up messages skip it |
 | **Delivery** | Greeting length | Greetings follow a three-part pattern (stack → concrete result with numbers → intent), 80-140 chars; a one-click recommended prompt lives in Settings |
 | **Delivery** | AI greeting | One-click polish of the default greeting; backend can generate a job-aware greeting |
 | **Delivery** | Image resume | Upload a resume image and send it along with the greeting |
