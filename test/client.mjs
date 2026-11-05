@@ -1493,6 +1493,75 @@ console.log('\n[data page: account switch and clear]')
   console.error = originalWarn
 }
 
+console.log('\n[settings: recommended greeting prompt]')
+{
+  // 招呼语太短的根因通常是提示词里写死了字数。这里保证「用推荐提示词」能一键回填 80-120 字版本。
+  const originalFetch = globalThis.fetch
+  const originalWarn = console.error
+  const jsonOk = (payload) => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify(payload),
+    json: async () => payload,
+  })
+
+  globalThis.fetch = async (url) => {
+    const target = String(url)
+    if (target.includes('/dsh-get-jobs/health')) {
+      return jsonOk({
+        plugin: 'dsh-get-jobs', baseUrl: 'http://127.0.0.1:9527',
+        reachable: true, state: 'ready', managed: true, pid: 1, message: '后端在线',
+      })
+    }
+    if (target.includes('/api/ai/config')) {
+      return jsonOk({ success: true, data: { id: 1, introduce: '3 年 Java 后端', prompt: '请写一句 30 字以内的开场白' } })
+    }
+    if (target.includes('/api/ai/usage')) {
+      return jsonOk({ success: true, data: { today: { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0 }, run: { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0 }, limits: { run: 30, daily: 300, maxTokens: 300, disableThinking: true, greetingPool: true, greetingBatch: 10 }, model: 'deepseek-flash', thinkingSwitchSupported: true } })
+    }
+    if (target.includes('/api/config')) return jsonOk({ success: true, data: {} })
+    if (target.includes('/status')) return jsonOk({ isRunning: false, isLoggedIn: true })
+    if (target.includes('/api/system/ready')) return jsonOk({ ready: true, checks: [] })
+    if (target.includes('/api/playwright/status')) return jsonOk({ ready: true })
+    return { ok: false, status: 503, text: async () => 'unavailable', json: async () => ({}) }
+  }
+  dom.window.fetch = globalThis.fetch
+  console.error = () => {}
+
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  await React.act(async () => { root.render(React.createElement(mainEntry.component)) })
+
+  const settingsTab = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '设置')
+  await React.act(async () => { settingsTab.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+  const aiTab = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === 'AI 设置')
+  await React.act(async () => { aiTab.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+  await React.act(async () => { await new Promise((done) => setTimeout(done, 100)) })
+
+  const text = () => container.textContent ?? ''
+  check('AI 设置里有「用推荐提示词」按钮', [...container.querySelectorAll('button')].some((node) => node.textContent?.includes('用推荐提示词')), text().slice(0, 200))
+  check('提示词说明强调字数由提示词决定', text().includes('写死字数的提示词'), text().slice(0, 600))
+
+  const promptArea = [...container.querySelectorAll('textarea')].find((node) => (node.value ?? '').includes('30 字'))
+  check('能读到当前提示词', Boolean(promptArea), [...container.querySelectorAll('textarea')].map((node) => node.value?.slice(0, 12)).join(' | '))
+
+  const preset = [...container.querySelectorAll('button')].find((node) => node.textContent?.includes('用推荐提示词'))
+  if (preset) {
+    await React.act(async () => { preset.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    const filled = [...container.querySelectorAll('textarea')].map((node) => node.value ?? '').find((value) => value.includes('80-120'))
+    check('点击后回填 80-120 字提示词', Boolean(filled), String(filled).slice(0, 80))
+    check('推荐提示词要求三段式（技术栈/成果/意向）',
+      Boolean(filled) && filled.includes('技术栈') && filled.includes('成果') && filled.includes('求职意向'),
+      String(filled).slice(0, 200))
+  }
+
+  await React.act(async () => { root.unmount() })
+  container.remove()
+  globalThis.fetch = originalFetch
+  console.error = originalWarn
+}
+
 for (const dispose of disposers) dispose()
 
 console.log(`\n${failures === 0 ? 'PASS' : 'FAIL'}: ${passes} passed, ${failures} failed`)

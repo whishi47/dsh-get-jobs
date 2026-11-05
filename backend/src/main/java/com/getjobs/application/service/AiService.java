@@ -62,6 +62,16 @@ public class AiService {
      * @return AI 回复文本
      */
     public String sendRequest(String content) {
+        return sendRequest(content, -1);
+    }
+
+    /**
+     * 同上，但允许覆盖本次请求的 max_tokens。
+     *
+     * <p>批量生成招呼语时一次要吐 10 条 × 80-120 字，用全局的 300 会把后面的条目截断，
+     * 所以按条数把本次预算放大；-1 表示沿用配置值。
+     */
+    public String sendRequest(String content, int maxTokensOverride) {
         assertBudget();
 
         // 读取并校验配置
@@ -75,7 +85,9 @@ public class AiService {
                 : buildChatCompletionsEndpoint(baseUrl);
 
         int timeoutInSeconds = 60;
-        int maxTokens = getIntSetting("AI_MAX_TOKENS", DEFAULT_MAX_TOKENS);
+        int maxTokens = maxTokensOverride > 0
+                ? maxTokensOverride
+                : getIntSetting("AI_MAX_TOKENS", DEFAULT_MAX_TOKENS);
 
         // 构建 JSON 请求体
         JSONObject requestData = new JSONObject();

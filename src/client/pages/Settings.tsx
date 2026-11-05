@@ -63,6 +63,22 @@ const THINKING_MODES: Array<{ value: 'off' | 'auto' | 'high'; label: string; hin
 /** 池化开关缺省为开：老库里没有这个键时也要按省钱模式跑。 */
 const AI_POOL_DEFAULT = '1'
 
+/**
+ * 推荐提示词：明确 80-120 字，并要求「技术栈 + 真实成果 + 求职意向」三段式。
+ *
+ * <p>写死在面板上是为了让用户随时能一键回填 —— 提示词被改短过之后，
+ * 生成的招呼语就会一直很短，而用户很难意识到问题出在这一栏。
+ */
+const RECOMMENDED_GREETING_PROMPT = [
+  '你是求职者本人，请根据岗位 JD 写一段发给 HR 的开场白，要求：',
+  '1. 长度 80-120 个汉字，2-3 句，不要分段；',
+  '2. 第一句点明与该岗位最匹配的 1-2 项技术栈或业务经验（从 JD 里挑，不要罗列）；',
+  '3. 第二句用自我介绍里真实存在的成果支撑，尽量带数字或规模（并发量、QPS、数据量、团队人数），没有数字就用具体职责代替，不得编造；',
+  '4. 最后一句表达求职意向与沟通意愿；',
+  '5. 不要出现公司名、岗位名称，不要堆客套话，不要 emoji；',
+  '6. 只输出消息正文，不要标题、引号或解释。',
+].join('\n')
+
 /** Inner tabs — one per concern, each fits a screen without scrolling. */
 type SettingsTab = 'system' | 'ai' | 'blacklist' | 'custom' | 'backup'
 
@@ -784,19 +800,31 @@ export function Settings(): React.ReactElement {
           </div>
           {profile.loading ? <Skeleton height={160} /> : profile.data ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.space(3) }}>
-              <Field label="自我介绍（introduce）" hint="你的技术栈、项目成果，100-200 字效果最好">
+              <Field label="自我介绍（introduce）" hint="你的技术栈、项目成果；带上数字（并发量 / QPS / 数据量）效果最好，100-200 字">
                 <Textarea
                   value={aiForm.introduce}
                   rows={5}
                   onChange={(event) => setAiForm((prev) => ({ ...prev, introduce: event.target.value }))}
                 />
               </Field>
-              <Field label="打招呼提示词（prompt）" hint="告诉模型怎么写开场白，而不是写开场白本身">
-                <Textarea
-                  value={aiForm.prompt}
-                  rows={4}
-                  onChange={(event) => setAiForm((prev) => ({ ...prev, prompt: event.target.value }))}
-                />
+              <Field label="打招呼提示词（prompt）" hint="决定怎么写、写多长；写死字数的提示词会一直生成很短的招呼语">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <Textarea
+                    value={aiForm.prompt}
+                    rows={7}
+                    onChange={(event) => setAiForm((prev) => ({ ...prev, prompt: event.target.value }))}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <Button
+                      onClick={() => setAiForm((prev) => ({ ...prev, prompt: RECOMMENDED_GREETING_PROMPT }))}
+                    >
+                      用推荐提示词
+                    </Button>
+                    <span style={{ fontSize: tokens.font.xs, color: tokens.color.textFaint }}>
+                      推荐版要求 80-120 字：技术栈 → 真实成果（带数字）→ 求职意向
+                    </span>
+                  </div>
+                </div>
               </Field>
             </div>
           ) : (

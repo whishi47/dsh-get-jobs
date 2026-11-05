@@ -1866,8 +1866,8 @@ public class Boss {
     /** AI 生成结果：skipCurrentJob=true 表示只跳过当前岗位，不影响同企业的其他岗位。 */
     record AiMessageDecision(boolean skipCurrentJob, String message) {}
 
-    private static final int AI_GREETING_MIN_CHARS = 50;
-    private static final int AI_GREETING_MAX_CHARS = 80;
+    private static final int AI_GREETING_MIN_CHARS = 80;
+    private static final int AI_GREETING_MAX_CHARS = 140;
     private static final String AI_GREETING_SAFE_FALLBACK = "您好，我对贵司的岗位很感兴趣。结合岗位要求和我目前的求职方向，希望有机会进一步了解团队工作内容，并介绍相关个人经历。感谢您阅读，期待后续沟通。";
 
     /**
@@ -1919,8 +1919,8 @@ public class Boss {
         String introduce = (aiConfig != null && aiConfig.getIntroduce() != null) ? aiConfig.getIntroduce() : "";
         String prompt = "请一次性生成 " + batch + " 条中文求职打招呼语，供同一批岗位轮换使用。\n"
                 + "要求：\n"
-                + "1. 每条 50 至 80 个汉字或字符，自然、真诚、具体；\n"
-                + "2. 不得出现公司名、岗位名，不得编造未提供的经历、年限、技能或成果；\n"
+                + "1. 每条 80 至 120 个汉字或字符（2 到 3 句），自然、真诚、具体；\n"
+                + "2. 每条都要有「匹配的技术栈 + 一个真实成果 + 求职意向」，不得出现公司名、岗位名，不得编造未提供的经历、年限、技能或成果；\n"
                 + "3. 每条单独一行，不要编号、不要引号、不要解释、不要 markdown；\n"
                 + "4. 语气可以有差异，但都要围绕下面的个人介绍与求职方向。\n"
                 + "个人介绍：" + introduce + "\n"
@@ -1928,7 +1928,9 @@ public class Boss {
                 + "参考岗位：" + (jobName == null ? "" : jobName) + "\n"
                 + "岗位描述节选：" + truncate(jd, 600);
         try {
-            String result = aiService.sendRequest(prompt);
+            // 一批 10 条 × 80-120 字，若沿用全局 300 token 会被截断成两三条，按条数放大本次预算
+            int budget = Math.max(600, batch * 160);
+            String result = aiService.sendRequest(prompt, budget);
             List<String> parsed = parseGreetingBatch(result, batch);
             if (parsed.isEmpty()) {
                 log.warn("AI 招呼语池生成结果为空，回退固定招呼语");
@@ -1958,7 +1960,7 @@ public class Boss {
                     .strip();
             if (value.isEmpty() || value.startsWith("```")) continue;
             int length = value.codePointCount(0, value.length());
-            if (length < 20 || length > 160) continue;
+            if (length < 40 || length > 200) continue;
             value = truncateGreeting(value);
             if (!values.contains(value)) values.add(value);
             if (values.size() >= limit) break;
@@ -2073,7 +2075,7 @@ public class Boss {
 
     private static String buildGreetingRetryPrompt(String original, String introduce, String jobName, String jd) {
         return "请把下面这句求职打招呼语扩写成自然、真诚、具体的中文消息，"
-                + "严格控制在50至80个汉字或字符内；不得添加原文和上下文未提供的经历、年限、技能或成果。"
+                + "严格控制在80至120个汉字或字符内（2到3句）；不得添加原文和上下文未提供的经历、年限、技能或成果。"
                 + "只输出最终消息，不要解释、标题或引号。\n原文：" + normalizeAiGreeting(original) + "\n"
                 + "个人介绍：" + introduce + "\n职位名称：" + jobName + "\n职位描述：" + jd;
     }
@@ -2110,8 +2112,9 @@ public class Boss {
     }
 
     private static String greetingLengthInstruction() {
-        return "请生成一段自然、真诚、具体的中文求职打招呼语，严格控制在50至80个汉字或字符内；"
-                + "结合个人经历与岗位要求，不要编造未提供的信息；只输出消息正文。";
+        return "请生成一段自然、真诚、具体的中文求职打招呼语，严格控制在80至120个汉字或字符内（2到3句，不要分段）；"
+                + "第一句点明与岗位最匹配的技术栈或业务经验，第二句用个人介绍里真实存在的成果支撑（有数字就带数字），"
+                + "最后一句表达求职意向；不要出现公司名和岗位名称，不要编造未提供的信息；只输出消息正文。";
     }
 
     static boolean isAiRejectResponse(String result) {
@@ -2120,8 +2123,9 @@ public class Boss {
     }
 
     private String buildDefaultPrompt(String introduce, String keyword, String jobName, String jd) {
-        return "请基于以下信息生成自然、友好的中文求职打招呼语，严格控制在50至80个汉字或字符内；"
-                + "不得编造简历未提供的信息，只输出消息正文：\n" +
+        return "请基于以下信息生成自然、友好的中文求职打招呼语，严格控制在80至120个汉字或字符内（2到3句）；"
+                + "第一句挑 1 到 2 项与岗位最匹配的技术栈或业务经验，第二句用下面介绍里真实存在的成果支撑（有数字就带数字），"
+                + "最后一句表达求职意向；不要出现公司名和岗位名称，不得编造简历未提供的信息，只输出消息正文：\n" +
                 "个人介绍：" + introduce + "\n" +
                 "关键词：" + keyword + "\n" +
                 "职位名称：" + jobName + "\n" +
