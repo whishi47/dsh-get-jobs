@@ -2,7 +2,7 @@
  * Data page: filters, KPI, distribution bars, paged rows, and export.
  * @module dsh-get-jobs/client/pages/data
  */
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
 import { PLATFORMS, timeLabel, type Platform } from '../api.js'
 import { Badge, BarList, Button, Card, Empty, ErrorState, Field, Icon, Input, Skeleton, Spacer, Table } from '../components.js'
@@ -21,6 +21,11 @@ export function Data(): React.ReactElement {
   const [page, setPage] = useState(1)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | undefined>(undefined)
+  // 账号与数据管理：换招聘账号前先导出再清空，避免两个账号的数据混在一起
+  const [accountForm, setAccountForm] = useState<string | undefined>(undefined)
+  const [accountNotice, setAccountNotice] = useState<string | undefined>(undefined)
+  const [pendingScope, setPendingScope] = useState<'jobs' | 'failures' | 'stats' | 'all' | undefined>(undefined)
+  const [dataBusy, setDataBusy] = useState(false)
 
   const query = useMemo(() => {
     const base: Record<string, string | number> = { page, size: PAGE_SIZE }
@@ -28,6 +33,17 @@ export function Data(): React.ReactElement {
     if (status.trim()) base['statuses'] = status.trim()
     return base
   }, [keyword, status, page])
+
+  const summary = useResource(
+    async () => (api ? api.dataSummary() : undefined),
+    [backend.revision, api?.baseUrl],
+  )
+
+  useEffect(() => {
+    if (summary.data && accountForm === undefined) {
+      setAccountForm(summary.data.accountLabel ?? '')
+    }
+  }, [summary.data, accountForm])
 
   const stats = useResource(
     async () => (api ? api.stats(platform, { keyword: keyword.trim(), statuses: status.trim() }) : undefined),
@@ -59,6 +75,61 @@ export function Data(): React.ReactElement {
 
   const total = jobs.data?.total ?? 0
   const maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  async function saveAccount(): Promise<void> {
+    if (!api) return
+    setDataBusy(true)
+    setAccountNotice(undefined)
+    try {
+      const raw = await api.saveAccountLabel(accountForm ?? '') as { message?: string }
+      setAccountNotice(raw?.message ?? '账号标签已保存')
+      summary.reload()
+    } catch (caught) {
+      setAccountNotice(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setDataBusy(false)
+    }
+  }
+
+  /** 导出全部业务数据为 JSON（不含 API Key 与登录态）。 */
+  async function exportAll(): Promise<void> {
+    if (!api) return
+    setDataBusy(true)
+    setAccountNotice(undefined)
+    try {
+      const data = await api.exportAllData()
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const href = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = href
+      anchor.download = `dsh-get-jobs-数据-${new Date().toISOString().slice(0, 10)}.json`
+      anchor.click()
+      setTimeout(() => URL.revokeObjectURL(href), 1_000)
+      setAccountNotice('已导出（不含 API Key 与登录态）')
+    } catch (caught) {
+      setAccountNotice(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setDataBusy(false)
+    }
+  }
+
+  async function clearScope(scope: 'jobs' | 'failures' | 'stats' | 'all'): Promise<void> {
+    if (!api) return
+    setDataBusy(true)
+    setAccountNotice(undefined)
+    try {
+      const raw = await api.dataClear(scope) as { message?: string }
+      setPendingScope(undefined)
+      setAccountNotice(raw?.message ?? '已清空')
+      summary.reload()
+      stats.reload()
+      jobs.reload()
+    } catch (caught) {
+      setAccountNotice(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setDataBusy(false)
+    }
+  }
 
   async function exportXlsx(target: Platform | 'all' = platform): Promise<void> {
     if (!api) return
@@ -99,6 +170,72 @@ export function Data(): React.ReactElement {
           {exporting ? '导出中…' : '导出 Excel'}
         </Button>
       </div>
+
+      <Card
+        title="账号与数据"
+        actions={(
+          <Badge tone={summary.data?.accountLabel ? 'accent' : 'neutral'}>
+            {summary.data?.accountLabel ? `当前账号：${summary.data.accountLabel}` : '未标记账号'}
+          </Badge>
+        )}
+      >
+        <div style={{ fontSize: tokens.font.sm, color: tokens.color.textMuted }}>
+          换招聘账号前：先「导出全部数据」，再「清空岗位数据」。配置（API Key、每日目标、招呼语）与登录态不会被清掉。
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 220px', minWidth: 200 }}>
+            <Field label="当前账号标签" hint="只做标记，比如「Boss A / 尾号 8888」">
+              <Input
+                value={accountForm ?? ''}
+                placeholder="账号A"
+                onChange={(event) => { setAccountForm(event.target.value); setAccountNotice(undefined) }}
+              />
+            </Field>
+          </div>
+          <Button tone="primary" onClick={saveAccount} disabled={!api || dataBusy}>保存标签</Button>
+          <Button icon="export" onClick={exportAll} disabled={!api || dataBusy}>导出全部数据</Button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: tokens.font.xs, color: tokens.color.textMuted }}>
+          <span>岗位 <strong>{summary.data?.jobs ?? 0}</strong></span>
+          <span>已投递 <strong>{summary.data?.delivered ?? 0}</strong></span>
+          <span>已过滤 <strong>{summary.data?.filtered ?? 0}</strong></span>
+          <span>失败记录 <strong>{summary.data?.failures ?? 0}</strong></span>
+          <span>统计天数 <strong>{summary.data?.deliveryDays ?? 0}</strong></span>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {([
+            ['jobs', '清空岗位数据'],
+            ['failures', '清空失败记录'],
+            ['stats', '清空每日统计'],
+            ['all', '清空全部业务数据'],
+          ] as const).map(([scope, label]) => (
+            pendingScope === scope ? (
+              <span key={scope} style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                <Button tone="danger" onClick={() => void clearScope(scope)} disabled={dataBusy}>
+                  {dataBusy ? '清空中…' : `确认${label}`}
+                </Button>
+                <Button onClick={() => setPendingScope(undefined)} disabled={dataBusy}>取消</Button>
+              </span>
+            ) : (
+              <Button
+                key={scope}
+                tone={scope === 'all' ? 'danger' : 'default'}
+                onClick={() => { setPendingScope(scope); setAccountNotice(undefined) }}
+                disabled={!api || dataBusy}
+              >
+                {label}
+              </Button>
+            )
+          ))}
+        </div>
+
+        {accountNotice ? (
+          <div style={{ fontSize: tokens.font.xs, color: tokens.color.textMuted }}>{accountNotice}</div>
+        ) : null}
+      </Card>
 
       {exportError ? <ErrorState message={exportError} onRetry={exportXlsx} /> : null}
 

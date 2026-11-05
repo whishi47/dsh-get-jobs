@@ -203,6 +203,7 @@ It is cached afterwards, so **later runs work offline**. Playwright's browser is
 | "Send image resume" checked but nothing sent | You must **upload** the image first in **Delivery Config** (a thumbnail appears when it worked). The checkbox alone does nothing |
 | Do I need MySQL / Redis? | No. One SQLite file, that's it |
 | Is my resume / key uploaded somewhere? | Data stays local; AI calls go to **your** configured endpoint. Never share the runtime `db/getjobs.db` — it may contain your config |
+| I'm switching to another job-site account | On the Data page, set the account label, click **Export all data** to back up, then **Clear job data**. Config and login stay intact — just log in with the new account and apply again |
 | Can retries send twice? | No. A successful retry deletes the entry immediately. Retries use the **fixed greeting** (no job description, so no AI cost), and each run retries at most 20 entries |
 | Why were some jobs not delivered? | The Run page shows "today N failed" plus the main reasons — usually the posting is closed (no chat button) or the send button never rendered. Open the Data page to see which jobs, and export them if you want to follow up manually |
 | Why did it stop by itself? | Three cases: daily target reached, outside the allowed hours, or a platform security check (cooldown). The Run page always states the reason |
@@ -230,6 +231,7 @@ It is cached afterwards, so **later runs work offline**. Playwright's browser is
 | **Delivery** | Retry failures | With the switch on, each run **first retries today's failed jobs** that still have a detail link (max 20 per run). On success the entry is removed so nobody gets messaged twice |
 | **Delivery** | Failure reasons | Jobs that couldn't be delivered are grouped by reason (no chat button / no send button / bad link…); the Run page shows today's count and the top reasons |
 | **Delivery** | Risk cooldown | If the platform throws a security check, it cools down for N minutes (30 by default) and refuses to start; the Run page shows the countdown and lets you clear it |
+| **Data** | Switching accounts | Set an account label, export all business data as JSON, then clear by scope (jobs / failures / daily stats / everything). **Config, API key and login session are never touched** |
 | **Settings** | Config backup | Export every setting as JSON (secrets blanked by default) and import it on another machine. Empty values never overwrite your existing key |
 | **Settings** | Daily report | Pushes a short summary (how many sent, how many tokens spent) to WeCom at a fixed time, or on demand |
 | **Data** | Job table | Normalized positions, single-platform or four-platform merge, streamed xlsx export |

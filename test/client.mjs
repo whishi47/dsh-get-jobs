@@ -1351,6 +1351,148 @@ console.log('\n[settings backup tab]')
   console.error = originalWarn
 }
 
+console.log('\n[data page: account switch and clear]')
+{
+  // 换招聘账号时最容易把两个号的数据混在一起：这里验证「标记账号 → 导出 → 分范围清空」这条链路。
+  const originalFetch = globalThis.fetch
+  const originalWarn = console.error
+  const originalCreateObjectURL = URL.createObjectURL
+  const originalRevokeObjectURL = URL.revokeObjectURL
+  const originalAnchorClick = dom.window.HTMLAnchorElement.prototype.click
+  let exportBlob
+  let exportName
+  let clearBody
+  let accountBody
+
+  URL.createObjectURL = (blob) => { exportBlob = blob; return 'blob:data-export' }
+  URL.revokeObjectURL = () => {}
+  dom.window.HTMLAnchorElement.prototype.click = function () { exportName = this.download }
+
+  const jsonOk = (payload) => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify(payload),
+    json: async () => payload,
+  })
+
+  globalThis.fetch = async (url, init) => {
+    const target = String(url)
+    if (target.includes('/dsh-get-jobs/health')) {
+      return jsonOk({
+        plugin: 'dsh-get-jobs', baseUrl: 'http://127.0.0.1:9527',
+        reachable: true, state: 'ready', managed: true, pid: 1, message: '后端在线',
+      })
+    }
+    if (target.includes('/api/data/summary')) {
+      return jsonOk({
+        success: true,
+        data: {
+          accountLabel: '', jobs: 187, delivered: 150, filtered: 7,
+          failures: 3, deliveryDays: 2, usageDays: 2,
+          byTable: { boss_data: 187, liepin_data: 0, job51_data: 0, zhilian_data: 0 },
+        },
+      })
+    }
+    if (target.includes('/api/data/export') && init?.method === 'POST') {
+      return jsonOk({
+        success: true,
+        data: {
+          exportedAt: '2026-11-05T10:30:00',
+          accountLabel: '',
+          note: '仅含业务数据（岗位 / 投递记录 / 失败记录 / 每日统计），不含 API Key 与登录态',
+          boss_data: [{ company_name: '某公司' }],
+        },
+      })
+    }
+    if (target.includes('/api/data/clear') && init?.method === 'POST') {
+      clearBody = JSON.parse(String(init.body ?? '{}'))
+      return jsonOk({ success: true, data: { boss_data: 187 }, message: '已清空 187 行（配置与登录态未受影响）' })
+    }
+    if (target.includes('/api/data/account') && init?.method === 'POST') {
+      accountBody = JSON.parse(String(init.body ?? '{}'))
+      return jsonOk({ success: true, data: { accountLabel: accountBody.label }, message: '账号标签已保存：' + accountBody.label })
+    }
+    if (target.includes('/stats')) return jsonOk({ kpi: { total: 0, delivered: 0, pending: 0, filtered: 0 }, charts: {} })
+    if (target.includes('/api/boss/list')) return jsonOk({ items: [], total: 0 })
+    if (target.includes('/status')) return jsonOk({ isRunning: false, isLoggedIn: true })
+    return { ok: false, status: 503, text: async () => 'unavailable', json: async () => ({}) }
+  }
+  dom.window.fetch = globalThis.fetch
+  console.error = () => {}
+
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  await React.act(async () => { root.render(React.createElement(mainEntry.component)) })
+
+  const dataTab = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '数据')
+  await React.act(async () => { dataTab.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+  await React.act(async () => { await new Promise((done) => setTimeout(done, 100)) })
+
+  const text = () => container.textContent ?? ''
+  check('数据页有「账号与数据」卡片', text().includes('账号与数据'), text().slice(0, 200))
+  check('未标记账号时给出提示', text().includes('未标记账号'), text().slice(0, 300))
+  check('显示岗位总数', text().includes('187'), text().slice(0, 400))
+  check('显示失败记录数', text().includes('失败记录') && text().includes('3'), text().slice(0, 500))
+  check('提示换账号前先导出再清空', text().includes('换招聘账号前'), text().slice(0, 500))
+
+  const exportAllBtn = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '导出全部数据')
+  check('有导出全部数据按钮', Boolean(exportAllBtn))
+  if (exportAllBtn) {
+    await React.act(async () => { exportAllBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    check('导出文件名是 JSON', String(exportName ?? '').endsWith('.json'), String(exportName))
+    const exported = exportBlob ? JSON.parse(await exportBlob.text()) : {}
+    check('导出内容是业务数据', Array.isArray(exported?.boss_data), JSON.stringify(exported).slice(0, 160))
+    check('导出说明写明不含 Key', String(exported?.note ?? '').includes('不含 API Key'), String(exported?.note ?? ''))
+  }
+
+  // 两步确认：第一次点只是进入"确认"状态，不会真的删
+  const clearJobsBtn = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '清空岗位数据')
+  check('有清空岗位数据按钮', Boolean(clearJobsBtn))
+  if (clearJobsBtn) {
+    await React.act(async () => { clearJobsBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    check('第一次点击不会直接清空', clearBody === undefined, JSON.stringify(clearBody))
+    const confirmBtn = [...container.querySelectorAll('button')].find((node) => (node.textContent ?? '').includes('确认清空岗位数据'))
+    check('出现二次确认按钮', Boolean(confirmBtn))
+    if (confirmBtn) {
+      await React.act(async () => {
+        confirmBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+        await new Promise((done) => setTimeout(done, 90))
+      })
+      check('确认后调用 /api/data/clear', clearBody?.scope === 'jobs', JSON.stringify(clearBody))
+      check('清空请求带 confirm=true', clearBody?.confirm === true, JSON.stringify(clearBody))
+      check('清空后给出结果提示', text().includes('配置与登录态未受影响'), text().slice(0, 600))
+    }
+  }
+
+  const accountInput = [...container.querySelectorAll('input')].find((node) => node.placeholder === '账号A')
+  check('有账号标签输入框', Boolean(accountInput))
+  if (accountInput) {
+    const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set
+    await React.act(async () => {
+      setValue.call(accountInput, 'Boss-尾号8888')
+      accountInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    })
+    const saveBtn = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '保存标签')
+    if (saveBtn) {
+      await React.act(async () => {
+        saveBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+        await new Promise((done) => setTimeout(done, 90))
+      })
+      check('保存标签调用了 /api/data/account', accountBody?.label === 'Boss-尾号8888', JSON.stringify(accountBody))
+      check('保存后给出提示', text().includes('账号标签已保存'), text().slice(0, 600))
+    }
+  }
+
+  await React.act(async () => { root.unmount() })
+  container.remove()
+  globalThis.fetch = originalFetch
+  URL.createObjectURL = originalCreateObjectURL
+  URL.revokeObjectURL = originalRevokeObjectURL
+  dom.window.HTMLAnchorElement.prototype.click = originalAnchorClick
+  console.error = originalWarn
+}
+
 for (const dispose of disposers) dispose()
 
 console.log(`\n${failures === 0 ? 'PASS' : 'FAIL'}: ${passes} passed, ${failures} failed`)

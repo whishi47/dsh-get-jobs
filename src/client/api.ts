@@ -142,6 +142,19 @@ export interface DeliveryQuota {
   serverTime?: string
 }
 
+/** 数据概览（`GET /api/data/summary`）。 */
+export interface DataSummary {
+  /** 当前账号标签，空串表示没设。 */
+  accountLabel: string
+  jobs: number
+  delivered: number
+  filtered: number
+  failures: number
+  deliveryDays: number
+  usageDays: number
+  byTable: Record<string, number>
+}
+
 /** 每日汇报的设置与预览（`GET /api/delivery/report`）。 */
 export interface DailyReportState {
   enabled: boolean
@@ -436,6 +449,28 @@ export class JobsApi {
   /** 立即推送一次日报。 */
   sendDailyReport(): Promise<unknown> {
     return this.call('POST', '/api/delivery/report/send')
+  }
+
+  /** 账号与数据概览（各表行数、当前账号标签）。 */
+  async dataSummary(): Promise<DataSummary> {
+    const raw = await this.call<Record<string, unknown>>('GET', '/api/data/summary')
+    return (raw['data'] as DataSummary | undefined) ?? (raw as unknown as DataSummary)
+  }
+
+  /** 导出全部业务数据（不含 API Key 与登录态）。 */
+  async exportAllData(): Promise<Record<string, unknown>> {
+    const raw = await this.call<Record<string, unknown>>('POST', '/api/data/export')
+    return (raw['data'] as Record<string, unknown> | undefined) ?? raw
+  }
+
+  /** 分范围清空业务数据；`confirm` 由服务端强制校验。 */
+  dataClear(scope: 'jobs' | 'failures' | 'stats' | 'all'): Promise<unknown> {
+    return this.call('POST', '/api/data/clear', { scope, confirm: true })
+  }
+
+  /** 保存当前招聘账号的标签，仅用于标记。 */
+  saveAccountLabel(label: string): Promise<unknown> {
+    return this.call('POST', '/api/data/account', { label })
   }
 
   /**
