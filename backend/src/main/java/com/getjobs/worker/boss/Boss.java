@@ -4,6 +4,7 @@ import com.getjobs.application.entity.AiEntity;
 import com.getjobs.application.service.AiService;
 import com.getjobs.application.service.BossResumeImageService;
 import com.getjobs.application.service.BossService;
+import com.getjobs.application.service.DeliveryFailureService;
 import com.getjobs.application.service.DeliveryQuotaService;
 import com.getjobs.worker.utils.Job;
 import com.getjobs.worker.utils.JobUtils;
@@ -53,6 +54,8 @@ public class Boss {
     private final BossResumeImageService bossResumeImageService;
     /** 每日投递配额：达到目标就收工，避免一口气投太多。 */
     private final DeliveryQuotaService deliveryQuotaService;
+    /** 投递失败记录：面板上「为什么没投出去」的数据来源。 */
+    private final DeliveryFailureService deliveryFailureService;
     private Set<String> blackCompanies;
     private Set<String> blackRecruiters;
     private Set<String> blackJobs;
@@ -69,6 +72,9 @@ public class Boss {
     private boolean quotaStop = false;
     /** 本次运行是否因为撞上安全校验（风控）而提前收工。 */
     private boolean riskStop = false;
+    /** 公司冷却天数（0 = 未启用）与冷却期内的公司集合，运行时加载一次。 */
+    private int companyCooldownDays = 0;
+    private Set<String> deliveredCompanies = Set.of();
 
     /**
      * 池化生成的招呼语：一次批量生成多条，按岗位轮换使用。
@@ -131,6 +137,12 @@ public class Boss {
         aiService.resetRunUsage();
         quotaStop = false;
         riskStop = false;
+        // 公司冷却：同一家公司 N 天内不重复投。整个运行只查一次库。
+        companyCooldownDays = deliveryQuotaService.companyCooldownDays();
+        deliveredCompanies = deliveryQuotaService.recentDeliveredCompanies(companyCooldownDays);
+        if (companyCooldownDays > 0) {
+            log.info("公司冷却已启用：{} 天，涉及 {} 家公司", companyCooldownDays, deliveredCompanies.size());
+        }
         // 今天已经投够了就直接收工，别让浏览器白开一趟
         if (deliveryQuotaService.isReached("boss")) {
             progressCallback.accept(quotaStopMessage(), 0, 0);
@@ -493,6 +505,13 @@ public class Boss {
                 job.setCompanyName(bossCompany != null ? bossCompany : "");
                 job.setRecruiter(bossName != null ? bossName : "");
                 job.setJobInfo(jobDesc != null ? jobDesc : "");
+
+                // 公司冷却：同一家公司 N 天内投过就跳过，避免一家公司被投好几个岗位
+                if (companyCooldownDays > 0 && bossCompany != null
+                        && deliveredCompanies.contains(bossCompany.trim())) {
+                    log.info("被过滤：公司冷却期内已投过 | 公司：{} | 岗位：{}", bossCompany, jobName);
+                    continue;
+                }
 
                 // 输出
                 progressCallback.accept("正在投递：" + jobName, i + 1, count);
@@ -1060,6 +1079,15 @@ public class Boss {
      * 备注：目前Boss无法通过新标签页打开立即沟通按钮，所以只能点击更多详情，然后从更多详情里打开聊天按钮
      */
     @SneakyThrows
+    /** 记录一次「没投出去」。原因会出现在面板的失败统计里，落库失败也不影响投递。 */
+    private void recordFailure(Job job, String reason) {
+        try {
+            deliveryFailureService.record("boss", job.getJobName(), job.getCompanyName(), null, reason);
+        } catch (Throwable ignore) {
+            // 统计失败不能影响投递
+        }
+    }
+
     private boolean resumeSubmission(String keyword, Job job) {
         // 若收到停止指令，直接短路返回
         if (shouldStopCallback != null && Boolean.TRUE.equals(shouldStopCallback.get())) {
@@ -1076,12 +1104,14 @@ public class Boss {
         Locator moreInfoBtn = page.locator("a.more-job-btn");
         if (moreInfoBtn.count() == 0) {
             log.warn("未找到\"查看更多信息\"按钮，跳过...");
+            recordFailure(job, "未找到详情按钮（页面结构可能已变）");
             return false;
         }
         // 强制用js新开tab
         String href = moreInfoBtn.first().getAttribute("href");
         if (href == null || !href.startsWith("/job_detail/")) {
             log.warn("未获取到岗位详情链接，跳过...");
+            recordFailure(job, "详情链接无效");
             return false;
         }
         String detailUrl = "https://www.zhipin.com" + href;
@@ -1121,6 +1151,7 @@ public class Boss {
             }
             if (!foundChatBtn) {
                 log.warn("未找到可用的沟通按钮，跳过岗位: {}", job.getJobName());
+                recordFailure(job, "没有可投递的沟通按钮（岗位可能已关闭）");
                 // 关闭详情页
                 try {
                     detailPage.close();
@@ -1191,6 +1222,7 @@ public class Boss {
                 sendSuccess = true;
             } else {
                 log.warn("未找到发送按钮，自动跳过！岗位：{}", job.getJobName());
+                recordFailure(job, "未找到发送按钮");
             }
 
             // 8. 发送图片简历（可选）

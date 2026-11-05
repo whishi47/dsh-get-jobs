@@ -120,6 +120,13 @@ export interface DeliveryQuota {
   /** 允许投递的时间段，如 `09:00 - 23:00`；空串表示全天。 */
   workHours: string
   inWorkHours: boolean
+  /** 今日「没投出去」的统计。 */
+  failures?: {
+    total: number
+    byReason: Array<{ reason: string; count: number }>
+  }
+  /** 公司冷却天数，0 = 未启用。 */
+  companyCooldownDays?: number
   /** 触发安全校验后的冷却状态。 */
   cooldown?: {
     active: boolean

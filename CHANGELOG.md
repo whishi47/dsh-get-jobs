@@ -6,6 +6,23 @@
 
 ---
 
+## [v0.7.0] - 2026-11-05
+
+### ✨ Added
+- **公司冷却期**：同一家公司 N 天内只投一次（`DELIVERY_COMPANY_COOLDOWN_DAYS`，0 = 关闭）。数据来自 `boss_data` 里「已投递」且最近 N 天有更新的公司，整个运行只查一次库。
+  - 命中冷却的岗位在循环里直接跳过，不会打开详情页、不消耗 AI 调用；
+  - 运行页可设置天数，快照里带 `companyCooldownCount`（当前受影响的 company 数）。
+- **投递失败原因统计**：新增 `delivery_failure` 表，把「没投出去」按原因记下来。
+  - 覆盖：未找到详情按钮、详情链接无效、没有可投递的沟通按钮、未找到发送按钮；
+  - 黑名单命中、AI 判定不匹配这类**主动跳过不入库**，避免统计被自己的过滤规则污染；
+  - 每天每平台最多留 500 条，防止表无限膨胀；
+  - 运行页显示「今日没投出去 N 条（原因 2 / 原因 1）」。
+- 新增接口：`GET /api/delivery/failures`（今日明细，最多 50 条）、`POST /api/delivery/failures/clear`。
+
+### 🔧 Changed
+- `GET /api/delivery/quota` 增加 `failures`（总数 + 按原因聚合）与 `companyCooldownDays` / `companyCooldownCount`。
+- 运行页目标表单从两列改为自适应，新增「公司冷却（天）」。
+
 ## [v0.6.0] - 2026-11-05
 
 ### ✨ Added

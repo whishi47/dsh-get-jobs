@@ -9,9 +9,12 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * 每日投递配额：按天统计成功投递数，达到目标后让投递自动收工。
@@ -44,6 +47,8 @@ public class DeliveryQuotaService {
     public static final String KEY_COOLDOWN_UNTIL = "DELIVERY_COOLDOWN_UNTIL";
     /** 触发冷却的原因，面板展示用。 */
     public static final String KEY_COOLDOWN_REASON = "DELIVERY_COOLDOWN_REASON";
+    /** 同一家公司 N 天内不重复投；0 = 不限。 */
+    public static final String KEY_COMPANY_COOLDOWN_DAYS = "DELIVERY_COMPANY_COOLDOWN_DAYS";
 
     /** 平台 -> 该平台每日目标配置键。 */
     private static final Map<String, String> PLATFORM_TARGET_KEYS = Map.of(
@@ -221,6 +226,39 @@ public class DeliveryQuotaService {
         }
     }
 
+    // ------------------------------------------------------------ 公司冷却期
+
+    /** 公司冷却天数；未配置或 0 表示不启用。 */
+    public int companyCooldownDays() {
+        return readInt(KEY_COMPANY_COOLDOWN_DAYS);
+    }
+
+    /**
+     * 最近 N 天内已经投递成功的公司名集合。
+     *
+     * <p>数据源是 {@code boss_data}：投递成功时状态会改成「已投递」，比另建一张表更可靠。
+     * 日期比较只取 {@code updated_at} 的前 10 位（ISO 日期），避免 SQLite 解析不了
+     * 带纳秒的字符串；表为空或 SQL 出错时返回空集合 —— 冷却只是"少投"，不该因此卡住投递。
+     */
+    public Set<String> recentDeliveredCompanies(int days) {
+        if (days <= 0) return Set.of();
+        try {
+            List<String> names = jdbc.queryForList(
+                    "SELECT DISTINCT company_name FROM boss_data "
+                            + "WHERE delivery_status = '已投递' AND company_name IS NOT NULL AND company_name <> '' "
+                            + "AND substr(updated_at, 1, 10) >= date('now', 'localtime', ?)",
+                    String.class, "-" + days + " days");
+            Set<String> result = new HashSet<>();
+            for (String name : names) {
+                if (name != null && !name.isBlank()) result.add(name.trim());
+            }
+            return result;
+        } catch (RuntimeException error) {
+            log.debug("读取公司冷却列表失败，按未冷却处理: {}", error.getMessage());
+            return Set.of();
+        }
+    }
+
     // ---------------------------------------------------------------- 风控冷却
 
     /** 冷却时长（分钟）；未配置时默认 30，显式 0 表示不冷却。 */
@@ -329,6 +367,9 @@ public class DeliveryQuotaService {
         cooldown.put("reason", configService.getConfigValue(KEY_COOLDOWN_REASON) == null
                 ? "" : configService.getConfigValue(KEY_COOLDOWN_REASON));
         value.put("cooldown", cooldown);
+        value.put("companyCooldownDays", companyCooldownDays());
+        value.put("companyCooldownCount", companyCooldownDays() > 0
+                ? recentDeliveredCompanies(companyCooldownDays()).size() : 0);
         value.put("serverTime", LocalDateTime.now().withNano(0).toString());
         return value;
     }

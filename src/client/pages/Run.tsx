@@ -74,6 +74,7 @@ export function Run(): React.ReactElement {
           DELIVERY_DAILY_TARGET_51JOB: config['DELIVERY_DAILY_TARGET_51JOB'] ?? '0',
           DELIVERY_DAILY_TARGET_ZHILIAN: config['DELIVERY_DAILY_TARGET_ZHILIAN'] ?? '0',
           DELIVERY_WORK_HOURS: config['DELIVERY_WORK_HOURS'] ?? '',
+          DELIVERY_COMPANY_COOLDOWN_DAYS: config['DELIVERY_COMPANY_COOLDOWN_DAYS'] ?? '0',
         })
       })
       .catch(() => { if (alive) setQuotaForm({}) })
@@ -220,6 +221,8 @@ export function Run(): React.ReactElement {
   const dailyTarget = quotaData?.target ?? 0
   const quotaPercent = dailyTarget > 0 ? Math.min(Math.round((deliveredToday / dailyTarget) * 100), 100) : 0
   const quotaReached = quotaData?.reached === true
+  const failureTotal = quotaData?.failures?.total ?? 0
+  const failureReasons = quotaData?.failures?.byReason ?? []
   const cooldown = quotaData?.cooldown
   const coolingDown = cooldown?.active === true
 
@@ -329,7 +332,7 @@ export function Run(): React.ReactElement {
           </div>
         ) : null}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
           <Field label="合计每日目标" hint="0 = 不限；所有平台加起来投到这么多就停">
             <Input
               value={quotaForm?.['DELIVERY_DAILY_TARGET'] ?? ''}
@@ -343,6 +346,14 @@ export function Run(): React.ReactElement {
               value={quotaForm?.['DELIVERY_WORK_HOURS'] ?? ''}
               placeholder="9-23"
               onChange={(event) => { setQuotaForm((prev) => ({ ...(prev ?? {}), DELIVERY_WORK_HOURS: event.target.value })); setQuotaNotice(undefined) }}
+            />
+          </Field>
+          <Field label="公司冷却（天）" hint="同一家公司 N 天内不重复投；0 = 关">
+            <Input
+              value={quotaForm?.['DELIVERY_COMPANY_COOLDOWN_DAYS'] ?? ''}
+              placeholder="0"
+              inputMode="numeric"
+              onChange={(event) => { setQuotaForm((prev) => ({ ...(prev ?? {}), DELIVERY_COMPANY_COOLDOWN_DAYS: event.target.value })); setQuotaNotice(undefined) }}
             />
           </Field>
         </div>
@@ -377,6 +388,13 @@ export function Run(): React.ReactElement {
           ) : null}
           {quotaNotice ? <span style={{ fontSize: tokens.font.xs, color: tokens.color.textMuted }}>{quotaNotice}</span> : null}
         </div>
+
+        {failureTotal > 0 ? (
+          <div style={{ fontSize: tokens.font.xs, color: tokens.color.textMuted }}>
+            今日没投出去 <strong>{failureTotal}</strong> 条
+            {failureReasons.length > 0 ? `（${failureReasons.slice(0, 3).map((item) => `${item.reason} ${item.count}`).join(' / ')}）` : ''}
+          </div>
+        ) : null}
 
         <div style={{ fontSize: tokens.font.xs, color: tokens.color.textFaint }}>
           合计与单平台两级配额 <strong>任一到达</strong> 就自动停投；改完目标立刻生效，不用重启后端。

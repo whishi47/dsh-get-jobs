@@ -1024,6 +1024,11 @@ console.log('\n[daily delivery quota]')
       },
       workHours: '09:00 - 23:00',
       inWorkHours: true,
+      companyCooldownDays: 0,
+      failures: {
+        total: 3,
+        byReason: [{ reason: '没有可投递的沟通按钮（岗位可能已关闭）', count: 2 }, { reason: '未找到发送按钮', count: 1 }],
+      },
       cooldown: { active: false, until: '', remainingMinutes: 0, minutes: 30, reason: '' },
       serverTime: '2026-11-05T12:00:00',
     },
@@ -1098,6 +1103,9 @@ console.log('\n[daily delivery quota]')
     ['Boss直聘', '猎聘', '51job', '智联招聘'].every((label) => text().includes(label)),
     text().slice(0, 400))
   check('显示当前在时段内', text().includes('时段内 09:00 - 23:00'), text().slice(0, 400))
+  check('有公司冷却输入', text().includes('公司冷却（天）'), text().slice(0, 500))
+  check('显示今日未投出去数量', text().includes('今日没投出去') && text().includes('3'), text().slice(0, 600))
+  check('显示失败原因分布', text().includes('没有可投递的沟通按钮'), text().slice(0, 600))
 
   const values = [...container.querySelectorAll('input')].map((node) => node.value)
   check('目标输入回填了后端配置', values.includes('30') && values.includes('20') && values.includes('10'), values.join('|'))
@@ -1115,6 +1123,8 @@ console.log('\n[daily delivery quota]')
       check('合计目标写进 DELIVERY_DAILY_TARGET', savedConfig.DELIVERY_DAILY_TARGET === '30', JSON.stringify(savedConfig))
       check('单平台目标写进 DELIVERY_DAILY_TARGET_BOSS', savedConfig.DELIVERY_DAILY_TARGET_BOSS === '20', JSON.stringify(savedConfig))
       check('时段写进 DELIVERY_WORK_HOURS', savedConfig.DELIVERY_WORK_HOURS === '9-23', JSON.stringify(savedConfig))
+      check('公司冷却写进 DELIVERY_COMPANY_COOLDOWN_DAYS',
+        savedConfig.DELIVERY_COMPANY_COOLDOWN_DAYS === '0', JSON.stringify(savedConfig))
     }
     check('保存后给出提示', text().includes('已保存'), text().slice(0, 300))
   }
@@ -1238,6 +1248,7 @@ console.log('\n[settings backup tab]')
         data: {
           day: '2026-11-05', target: 30, delivered: 12, remaining: 18, reached: false,
           byPlatform: { boss: 12 }, platforms: {}, workHours: '', inWorkHours: true,
+          companyCooldownDays: 0, failures: { total: 0, byReason: [] },
           cooldown: { active: false, until: '', remainingMinutes: 0, minutes: 30, reason: '' },
         },
       })
