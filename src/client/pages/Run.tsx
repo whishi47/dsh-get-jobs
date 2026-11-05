@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 
 import { PLATFORMS, type Platform } from '../api.js'
-import { Badge, Button, Card, Empty, ErrorState, Field, Icon, Input, Spacer, Tabs } from '../components.js'
+import { Badge, Button, Card, Empty, ErrorState, Field, Icon, Input, Spacer, Tabs, Toggle } from '../components.js'
 import { useBackend, usePolling, useResource } from '../hooks.js'
 import { pageStyle, tokens } from '../theme.js'
 
@@ -75,6 +75,7 @@ export function Run(): React.ReactElement {
           DELIVERY_DAILY_TARGET_ZHILIAN: config['DELIVERY_DAILY_TARGET_ZHILIAN'] ?? '0',
           DELIVERY_WORK_HOURS: config['DELIVERY_WORK_HOURS'] ?? '',
           DELIVERY_COMPANY_COOLDOWN_DAYS: config['DELIVERY_COMPANY_COOLDOWN_DAYS'] ?? '0',
+          DELIVERY_RETRY_FAILED: config['DELIVERY_RETRY_FAILED'] ?? '0',
         })
       })
       .catch(() => { if (alive) setQuotaForm({}) })
@@ -222,6 +223,7 @@ export function Run(): React.ReactElement {
   const quotaPercent = dailyTarget > 0 ? Math.min(Math.round((deliveredToday / dailyTarget) * 100), 100) : 0
   const quotaReached = quotaData?.reached === true
   const failureTotal = quotaData?.failures?.total ?? 0
+  const failureRetryable = quotaData?.failures?.retryable ?? 0
   const failureReasons = quotaData?.failures?.byReason ?? []
   const cooldown = quotaData?.cooldown
   const coolingDown = cooldown?.active === true
@@ -387,6 +389,23 @@ export function Run(): React.ReactElement {
             </Badge>
           ) : null}
           {quotaNotice ? <span style={{ fontSize: tokens.font.xs, color: tokens.color.textMuted }}>{quotaNotice}</span> : null}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: tokens.font.sm, flexWrap: 'wrap' }}>
+          <Toggle
+            checked={(quotaForm?.['DELIVERY_RETRY_FAILED'] ?? '0') === '1'}
+            label="开始投递时先重试今日失败的岗位"
+            onChange={(next) => {
+              setQuotaForm((prev) => ({ ...(prev ?? {}), DELIVERY_RETRY_FAILED: next ? '1' : '0' }))
+              setQuotaNotice(undefined)
+            }}
+          />
+          <span style={{ fontWeight: 600 }}>先重试今日失败的岗位</span>
+          <span style={{ color: tokens.color.textMuted }}>
+            只重试留有详情链接的
+            {failureRetryable > 0 ? `（当前 ${failureRetryable} 个可重试）` : '（今天还没有可重试的）'}
+            ，成功后自动从队列移除，不会重复发
+          </span>
         </div>
 
         {failureTotal > 0 ? (

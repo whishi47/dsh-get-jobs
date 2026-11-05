@@ -72,6 +72,9 @@ public class Boss {
     private boolean quotaStop = false;
     /** 本次运行是否因为撞上安全校验（风控）而提前收工。 */
     private boolean riskStop = false;
+    /** 每次运行最多重试多少个失败岗位。 */
+    private static final int RETRY_LIMIT = 20;
+
     /** 公司冷却天数（0 = 未启用）与冷却期内的公司集合，运行时加载一次。 */
     private int companyCooldownDays = 0;
     private Set<String> deliveredCompanies = Set.of();
@@ -148,6 +151,14 @@ public class Boss {
             progressCallback.accept(quotaStopMessage(), 0, 0);
             log.info("{}，本次不启动", quotaStopMessage());
             return 0;
+        }
+        // 先重试今天失败过、还留着详情页 URL 的岗位（默认关闭，见 DELIVERY_RETRY_FAILED）
+        if (deliveryQuotaService.retryFailedEnabled()) {
+            retryFailedDeliveries();
+            if (quotaStop || riskStop) {
+                log.info("重试阶段提前收工，本次共投出 {} 份", resultList.size());
+                return resultList.size();
+            }
         }
         for (String cityCode : config.getCityCode()) {
             if (quotaStop || riskStop) break;
@@ -1079,10 +1090,64 @@ public class Boss {
      * 备注：目前Boss无法通过新标签页打开立即沟通按钮，所以只能点击更多详情，然后从更多详情里打开聊天按钮
      */
     @SneakyThrows
+    /**
+     * 重试今天失败过、且留有详情页 URL 的岗位。
+     *
+     * <p>只处理有 URL 的（没有 URL 说明连详情页都没打开过，无法定位岗位）。单个岗位重试
+     * 失败只记日志、不中断后续流程；成功后把该 URL 的记录删掉，避免下次重复给同一个人发消息。
+     *
+     * <p>上限 {@value #RETRY_LIMIT} 个：重试不该把一次运行的时间全吃掉。
+     */
+    private void retryFailedDeliveries() {
+        java.util.List<java.util.Map<String, Object>> pending =
+                deliveryFailureService.todayRetryable("boss", RETRY_LIMIT);
+        if (pending.isEmpty()) {
+            log.info("没有需要重试的失败岗位");
+            return;
+        }
+        log.info("开始重试今日失败岗位：{} 个", pending.size());
+        progressCallback.accept("开始重试今日失败岗位：" + pending.size() + " 个", 0, pending.size());
+        int index = 0;
+        int succeeded = 0;
+        for (java.util.Map<String, Object> row : pending) {
+            if (riskStop) return;
+            if (deliveryQuotaService.isReached("boss")) {
+                quotaStop = true;
+                progressCallback.accept(quotaStopMessage(), index, pending.size());
+                return;
+            }
+            if (shouldStopCallback != null && Boolean.TRUE.equals(shouldStopCallback.get())) {
+                progressCallback.accept("用户取消投递", index, pending.size());
+                return;
+            }
+            String url = row.get("jobUrl") == null ? "" : String.valueOf(row.get("jobUrl"));
+            String name = row.get("jobName") == null ? "" : String.valueOf(row.get("jobName"));
+            String company = row.get("company") == null ? "" : String.valueOf(row.get("company"));
+            index++;
+            Job job = new Job();
+            job.setJobName(name);
+            job.setCompanyName(company);
+            job.setHref(url);
+            try {
+                progressCallback.accept("重试投递：" + (name.isEmpty() ? url : name), index, pending.size());
+                if (deliverToDetail(url, job, "")) {
+                    succeeded++;
+                    deliveryFailureService.removeByUrl("boss", url);
+                    log.info("重试成功 | 公司：{} | 岗位：{}", company, name);
+                }
+            } catch (Exception error) {
+                log.warn("重试失败 | 公司：{} | 岗位：{} | {}", company, name, error.getMessage());
+            }
+            pauseBetweenJobs();
+        }
+        progressCallback.accept("重试结束：成功 " + succeeded + " / " + pending.size(), pending.size(), pending.size());
+        log.info("重试结束：成功 {} / {}", succeeded, pending.size());
+    }
+
     /** 记录一次「没投出去」。原因会出现在面板的失败统计里，落库失败也不影响投递。 */
-    private void recordFailure(Job job, String reason) {
+    private void recordFailure(Job job, String jobUrl, String reason) {
         try {
-            deliveryFailureService.record("boss", job.getJobName(), job.getCompanyName(), null, reason);
+            deliveryFailureService.record("boss", job.getJobName(), job.getCompanyName(), jobUrl, reason);
         } catch (Throwable ignore) {
             // 统计失败不能影响投递
         }
@@ -1104,18 +1169,31 @@ public class Boss {
         Locator moreInfoBtn = page.locator("a.more-job-btn");
         if (moreInfoBtn.count() == 0) {
             log.warn("未找到\"查看更多信息\"按钮，跳过...");
-            recordFailure(job, "未找到详情按钮（页面结构可能已变）");
+            recordFailure(job, null, "未找到详情按钮（页面结构可能已变）");
             return false;
         }
         // 强制用js新开tab
         String href = moreInfoBtn.first().getAttribute("href");
         if (href == null || !href.startsWith("/job_detail/")) {
             log.warn("未获取到岗位详情链接，跳过...");
-            recordFailure(job, "详情链接无效");
+            recordFailure(job, null, "详情链接无效");
             return false;
         }
         String detailUrl = "https://www.zhipin.com" + href;
-        // 2. 在新窗口打开详情页
+        // 2. 在新窗口打开详情页并完成投递（抽成独立方法，供「失败重试」复用）
+        return deliverToDetail(detailUrl, job, keyword);
+    }
+
+    /**
+     * 在详情页上完成一次投递：找沟通按钮 → 打开聊天 → 输入招呼语 → 发送 → 可选图片简历。
+     *
+     * <p>从 {@link #resumeSubmission} 里抽出来，是为了让「失败重试」能按已有 URL 复用
+     * 同一段逻辑，而不是复制一遍（复制出来的两份迟早会不一致）。
+     *
+     * @param keyword 生成招呼语用的搜索关键词；重试场景没有关键词，传空串即可，
+     *                此时详情里没有 JD，不会触发 AI 生成，直接用固定招呼语。
+     */
+    private boolean deliverToDetail(String detailUrl, Job job, String keyword) {
         Page detailPage = page.context().newPage();
         try (BossChatNavigator navigator = new BossChatNavigator(detailPage)) {
             detailPage.navigate(detailUrl);
@@ -1151,7 +1229,7 @@ public class Boss {
             }
             if (!foundChatBtn) {
                 log.warn("未找到可用的沟通按钮，跳过岗位: {}", job.getJobName());
-                recordFailure(job, "没有可投递的沟通按钮（岗位可能已关闭）");
+                recordFailure(job, detailUrl, "没有可投递的沟通按钮（岗位可能已关闭）");
                 // 关闭详情页
                 try {
                     detailPage.close();
@@ -1222,7 +1300,7 @@ public class Boss {
                 sendSuccess = true;
             } else {
                 log.warn("未找到发送按钮，自动跳过！岗位：{}", job.getJobName());
-                recordFailure(job, "未找到发送按钮");
+                recordFailure(job, detailUrl, "未找到发送按钮");
             }
 
             // 8. 发送图片简历（可选）
@@ -1274,6 +1352,7 @@ public class Boss {
             return sendSuccess;
         }
     }
+
 
     
 

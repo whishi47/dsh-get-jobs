@@ -123,8 +123,12 @@ export interface DeliveryQuota {
   /** 今日「没投出去」的统计。 */
   failures?: {
     total: number
+    /** 有详情页 URL、可以重试的条数。 */
+    retryable?: number
     byReason: Array<{ reason: string; count: number }>
   }
+  /** 本次运行是否先重试今日失败岗位。 */
+  retryFailed?: boolean
   /** 公司冷却天数，0 = 未启用。 */
   companyCooldownDays?: number
   /** 触发安全校验后的冷却状态。 */

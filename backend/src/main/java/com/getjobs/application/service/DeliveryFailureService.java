@@ -115,6 +115,55 @@ public class DeliveryFailureService {
         return rows;
     }
 
+    /**
+     * 今日「可以重试」的记录：必须有详情页 URL，且按 URL 去重（同一岗位失败两次只重试一次）。
+     */
+    public List<Map<String, Object>> todayRetryable(String platform, int limit) {
+        String name = (platform == null || platform.isBlank()) ? "boss" : platform.trim().toLowerCase();
+        int size = Math.max(1, Math.min(limit, 100));
+        try {
+            return jdbc.query("""
+                    SELECT job_url, MIN(job_name) AS job_name, MIN(company) AS company, MIN(reason) AS reason
+                    FROM delivery_failure
+                    WHERE day = ? AND platform = ? AND job_url IS NOT NULL AND job_url <> ''
+                    GROUP BY job_url
+                    ORDER BY MIN(id) ASC LIMIT ?
+                    """,
+                    (rs, rowNum) -> {
+                        Map<String, Object> item = new LinkedHashMap<>();
+                        item.put("jobUrl", rs.getString("job_url"));
+                        item.put("jobName", rs.getString("job_name"));
+                        item.put("company", rs.getString("company"));
+                        item.put("reason", rs.getString("reason"));
+                        return item;
+                    },
+                    LocalDate.now().toString(), name, size);
+        } catch (RuntimeException error) {
+            log.debug("读取待重试列表失败: {}", error.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 今日可重试条数（有 URL 的）。 */
+    public int todayRetryableCount(String platform) {
+        return todayRetryable(platform, 100).size();
+    }
+
+    /**
+     * 重试成功后把该 URL 的记录删掉。
+     *
+     * <p>不删的话下次运行还会再投一遍，等于给同一个人连发两次消息。
+     */
+    public int removeByUrl(String platform, String jobUrl) {
+        String name = (platform == null || platform.isBlank()) ? "boss" : platform.trim().toLowerCase();
+        if (jobUrl == null || jobUrl.isBlank()) return 0;
+        try {
+            return jdbc.update("DELETE FROM delivery_failure WHERE platform = ? AND job_url = ?", name, jobUrl);
+        } catch (RuntimeException error) {
+            return 0;
+        }
+    }
+
     /** 今日失败总数。 */
     public int todayTotal(String platform) {
         int total = 0;

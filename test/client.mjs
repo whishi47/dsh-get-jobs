@@ -1027,8 +1027,10 @@ console.log('\n[daily delivery quota]')
       companyCooldownDays: 0,
       failures: {
         total: 3,
+        retryable: 2,
         byReason: [{ reason: '没有可投递的沟通按钮（岗位可能已关闭）', count: 2 }, { reason: '未找到发送按钮', count: 1 }],
       },
+      retryFailed: false,
       cooldown: { active: false, until: '', remainingMinutes: 0, minutes: 30, reason: '' },
       serverTime: '2026-11-05T12:00:00',
     },
@@ -1106,6 +1108,20 @@ console.log('\n[daily delivery quota]')
   check('有公司冷却输入', text().includes('公司冷却（天）'), text().slice(0, 500))
   check('显示今日未投出去数量', text().includes('今日没投出去') && text().includes('3'), text().slice(0, 600))
   check('显示失败原因分布', text().includes('没有可投递的沟通按钮'), text().slice(0, 600))
+  check('显示可重试条数', text().includes('2 个可重试'), text().slice(0, 700))
+  const retryToggle = [...container.querySelectorAll('button')].find((node) => node.getAttribute('aria-label') === '开始投递时先重试今日失败的岗位')
+  check('有失败重试开关', Boolean(retryToggle))
+  if (retryToggle) {
+    await React.act(async () => { retryToggle.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    const saveRetry = [...container.querySelectorAll('button')].find((node) => node.textContent?.trim() === '保存目标')
+    if (saveRetry) {
+      await React.act(async () => {
+        saveRetry.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+        await new Promise((done) => setTimeout(done, 90))
+      })
+      check('重试开关写进 DELIVERY_RETRY_FAILED', savedConfig?.DELIVERY_RETRY_FAILED === '1', JSON.stringify(savedConfig))
+    }
+  }
 
   const values = [...container.querySelectorAll('input')].map((node) => node.value)
   check('目标输入回填了后端配置', values.includes('30') && values.includes('20') && values.includes('10'), values.join('|'))
@@ -1248,7 +1264,7 @@ console.log('\n[settings backup tab]')
         data: {
           day: '2026-11-05', target: 30, delivered: 12, remaining: 18, reached: false,
           byPlatform: { boss: 12 }, platforms: {}, workHours: '', inWorkHours: true,
-          companyCooldownDays: 0, failures: { total: 0, byReason: [] },
+          companyCooldownDays: 0, retryFailed: false, failures: { total: 0, retryable: 0, byReason: [] },
           cooldown: { active: false, until: '', remainingMinutes: 0, minutes: 30, reason: '' },
         },
       })

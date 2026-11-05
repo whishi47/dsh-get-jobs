@@ -49,6 +49,8 @@ public class DeliveryQuotaService {
     public static final String KEY_COOLDOWN_REASON = "DELIVERY_COOLDOWN_REASON";
     /** 同一家公司 N 天内不重复投；0 = 不限。 */
     public static final String KEY_COMPANY_COOLDOWN_DAYS = "DELIVERY_COMPANY_COOLDOWN_DAYS";
+    /** 每次运行是否先重试今天失败的岗位（1 = 开）。 */
+    public static final String KEY_RETRY_FAILED = "DELIVERY_RETRY_FAILED";
 
     /** 平台 -> 该平台每日目标配置键。 */
     private static final Map<String, String> PLATFORM_TARGET_KEYS = Map.of(
@@ -228,6 +230,12 @@ public class DeliveryQuotaService {
 
     // ------------------------------------------------------------ 公司冷却期
 
+    /** 是否在开始投递前重试今天失败的岗位；默认关闭。 */
+    public boolean retryFailedEnabled() {
+        String raw = configService.getConfigValue(KEY_RETRY_FAILED);
+        return raw != null && ("1".equals(raw.trim()) || "true".equalsIgnoreCase(raw.trim()));
+    }
+
     /** 公司冷却天数；未配置或 0 表示不启用。 */
     public int companyCooldownDays() {
         return readInt(KEY_COMPANY_COOLDOWN_DAYS);
@@ -368,6 +376,7 @@ public class DeliveryQuotaService {
                 ? "" : configService.getConfigValue(KEY_COOLDOWN_REASON));
         value.put("cooldown", cooldown);
         value.put("companyCooldownDays", companyCooldownDays());
+        value.put("retryFailed", retryFailedEnabled());
         value.put("companyCooldownCount", companyCooldownDays() > 0
                 ? recentDeliveredCompanies(companyCooldownDays()).size() : 0);
         value.put("serverTime", LocalDateTime.now().withNano(0).toString());

@@ -40,6 +40,7 @@ public class DeliveryQuotaController {
         // 今日「没投出去」的统计，和配额放在同一个响应里，面板一次请求就够
         Map<String, Object> failures = new LinkedHashMap<>();
         failures.put("total", failureService.todayTotal("boss"));
+        failures.put("retryable", failureService.todayRetryableCount("boss"));
         failures.put("byReason", failureService.todayByReason("boss"));
         data.put("failures", failures);
         Map<String, Object> body = new LinkedHashMap<>();
@@ -53,6 +54,7 @@ public class DeliveryQuotaController {
     public ResponseEntity<Map<String, Object>> failures() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("total", failureService.todayTotal("boss"));
+        data.put("retryable", failureService.todayRetryableCount("boss"));
         data.put("byReason", failureService.todayByReason("boss"));
         data.put("items", failureService.todayList("boss", 50));
         Map<String, Object> body = new LinkedHashMap<>();
