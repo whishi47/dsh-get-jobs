@@ -4,10 +4,30 @@
 
 ## 🌿 分支策略
 
-- 默认分支为 `master`（发布分支）。
-- 贡献请 **Fork 本仓库**，从 `master` 拉出你的特性分支（如 `feat/xxx`、`fix/xxx`）。
-- 完成后提交 **Pull Request 到 `master`**。
-- 本项目规模较小，不维护独立的 `dev` 分支，直接 PR 到 `master` 即可。
+| 分支 | 用途 | 说明 |
+| --- | --- | --- |
+| `master` | 稳定 / 发布分支 | tag 从这里打；只接受 `develop` 与 `hotfix/*` 的合并 |
+| `develop` | 开发集成分支 | 日常开发与 **PR 的默认目标** |
+| `feature/<topic>` | 新功能 | 从 `develop` 拉，完成后 PR 回 `develop` |
+| `fix/<topic>` | 普通修复 | 从 `develop` 拉，完成后 PR 回 `develop` |
+| `hotfix/<topic>` | 线上紧急修复 | 从 `master` 拉，修完合 `master` 并回流 `develop` |
+| `docs/<topic>` | 纯文档改动 | 从 `develop` 拉，PR 回 `develop` |
+
+### 贡献流程
+
+1. Fork 本仓库；
+2. 从 `develop` 拉出你的分支（`feature/xxx`、`fix/xxx`、`docs/xxx`）；
+3. 完成后 **Pull Request 到 `develop`**，不要直接提到 `master`；
+4. 维护者合并后，`develop` 会定期合入 `master` 并发版。
+
+> 功能类 PR 如果以 `master` 为目标，会被要求改到 `develop`；只有 `hotfix/*` 允许以 `master` 为目标。
+
+### 发版流程（维护者）
+
+1. `develop` 验收通过 → 合并到 `master`；
+2. 在 `master` 上更新版本号与 `CHANGELOG.md`，打 tag（如 `v0.12.1`）；
+3. 推送 tag，创建 Release 并上传 `backend.jar` / `getjobs.db.template`；
+4. `master` 上的修复要回流到 `develop`（`git merge master`），避免下次发版丢补丁。
 
 ## 💡 先讨论，再动手
 
@@ -47,7 +67,7 @@ Commit 与 PR 标题**首行**必须遵循以下格式：
 | 🔧 chore | 杂项 | 构建、配置、依赖 |
 | 🚀 release | 发布 | 发版、打 tag |
 
-> CI 会校验首行格式，不符合将被拒绝合并。
+> 维护者会在合并前检查首行格式，不符合会请先修正。
 
 ## 🔍 PR 要求
 

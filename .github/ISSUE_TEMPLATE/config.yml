@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 安装与使用文档
+    url: https://github.com/whishi47/dsh-get-jobs#readme
+    about: 安装、配置、常见问题先看 README
+  - name: 🔐 安全与隐私说明
+    url: https://github.com/whishi47/dsh-get-jobs/blob/master/SECURITY.md
+    about: 数据存放位置、权限与凭据处理方式

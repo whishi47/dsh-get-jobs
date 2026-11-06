@@ -9,6 +9,7 @@
 
 ## ✅ 自检清单
 
+- [ ] 目标分支是 `develop`（仅 `hotfix/*` 允许指向 `master`）
 - [ ] 提交信息首行遵循 `<emoji> <小写英文描述>.` 格式
 - [ ] `npm run check` 全绿（build + gates + test）
 - [ ] 涉及 UI 已说明滚动 / 布局影响
