@@ -308,6 +308,8 @@ export function Settings(): React.ReactElement {
       AUTO_DELIVERY_ENABLED: appConfig.data?.['AUTO_DELIVERY_ENABLED'] ?? '0',
       AUTO_DELIVERY_TIME: appConfig.data?.['AUTO_DELIVERY_TIME'] ?? '09:30',
       AUTO_DELIVERY_PLATFORMS: appConfig.data?.['AUTO_DELIVERY_PLATFORMS'] ?? 'boss',
+      PROGRESS_PUSH_ENABLED: appConfig.data?.['PROGRESS_PUSH_ENABLED'] ?? '0',
+      PROGRESS_PUSH_INTERVAL_MINUTES: appConfig.data?.['PROGRESS_PUSH_INTERVAL_MINUTES'] ?? '30',
     })
   }, [appConfig.data])
 
@@ -1047,12 +1049,29 @@ export function Settings(): React.ReactElement {
             <span style={{ color: tokens.color.textMuted }}>需要先在「AI 设置 → 接口与推送」里填企业微信 webhook</span>
           </div>
 
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: tokens.font.sm }}>
+            <Toggle
+              checked={(reportForm?.['PROGRESS_PUSH_ENABLED'] ?? '0') === '1'}
+              label="投递中定期播报"
+              onChange={(next) => setReportForm((prev) => ({ ...(prev ?? {}), PROGRESS_PUSH_ENABLED: next ? '1' : '0' }))}
+            />
+            <span style={{ color: tokens.color.textMuted }}>任务跑着的时候，每隔一段时间推一条同样的进度；任务停了自动停</span>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <Field label="推送时间" hint="24 小时制，如 21:30">
               <Input
                 value={reportForm?.['DAILY_REPORT_TIME'] ?? ''}
                 placeholder="21:30"
                 onChange={(event) => setReportForm((prev) => ({ ...(prev ?? {}), DAILY_REPORT_TIME: event.target.value }))}
+              />
+            </Field>
+            <Field label="播报间隔（分钟）" hint="5-240，常用 10 / 20 / 30 / 60 / 90">
+              <Input
+                value={reportForm?.['PROGRESS_PUSH_INTERVAL_MINUTES'] ?? ''}
+                placeholder="30"
+                inputMode="numeric"
+                onChange={(event) => setReportForm((prev) => ({ ...(prev ?? {}), PROGRESS_PUSH_INTERVAL_MINUTES: event.target.value }))}
               />
             </Field>
             <Field label="触发安全校验后冷却" hint="分钟；填 0 = 不冷却">

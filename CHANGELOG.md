@@ -19,6 +19,7 @@
 
 ### ✨ Added
 - **定时投递**：设置 → 每日汇报下方新增「定时投递」，可配置每天几点、按什么平台顺序自动开跑（`AUTO_DELIVERY_ENABLED` / `AUTO_DELIVERY_TIME` / `AUTO_DELIVERY_PLATFORMS`）。同一天只触发一次；配额、风控冷却、允许时段照常生效，投满自动收工。
+- **投递中定期播报**：任务运行时每隔 N 分钟（`PROGRESS_PUSH_INTERVAL_MINUTES`，5-240，默认 30）往企业微信推一条与日报同口径的进度；任务停止后自动不再推，也不会占用当天日报的「已推」标记。
 
 ---
 

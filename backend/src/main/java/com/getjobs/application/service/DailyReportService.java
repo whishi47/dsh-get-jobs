@@ -34,6 +34,9 @@ public class DailyReportService {
     public static final String KEY_ENABLED = "DAILY_REPORT_ENABLED";
     public static final String KEY_TIME = "DAILY_REPORT_TIME";
     public static final String KEY_LAST = "DAILY_REPORT_LAST";
+    /** 投递运行中定期播报的开关与间隔（分钟）。 */
+    public static final String KEY_PROGRESS_ENABLED = "PROGRESS_PUSH_ENABLED";
+    public static final String KEY_PROGRESS_INTERVAL = "PROGRESS_PUSH_INTERVAL_MINUTES";
 
     private final JdbcTemplate jdbc;
     private final ConfigService configService;
@@ -117,6 +120,8 @@ public class DailyReportService {
         value.put("time", reportTime());
         value.put("lastSent", lastSentDay());
         value.put("hookConfigured", hookUrl() != null && !hookUrl().isBlank());
+        value.put("progressEnabled", progressEnabled());
+        value.put("progressIntervalMinutes", progressIntervalMinutes());
         value.put("preview", buildReport());
         return value;
     }
@@ -127,6 +132,24 @@ public class DailyReportService {
      * @return 结果说明；成功时带 {@code sent=true}
      */
     public Map<String, Object> pushNow() {
+        Map<String, Object> result = pushText(buildReport());
+        if (Boolean.TRUE.equals(result.get("sent"))) markSent();
+        return result;
+    }
+
+    /** 运行中定期播报：内容和日报一致，但不写「今天已推」标记。 */
+    public Map<String, Object> pushProgress() {
+        return pushText(buildProgressReport());
+    }
+
+    /** 把日报首行换成播报标题，其余数字保持一致。 */
+    public String buildProgressReport() {
+        String base = buildReport();
+        return base.replaceFirst("^📊 今日投递汇报 [0-9-]+", "⏱ 投递进度播报 " + LocalDate.now());
+    }
+
+    /** 发送一段文本；不写日报日期，供日报与进度播报共用。 */
+    public Map<String, Object> pushText(String text) {
         Map<String, Object> result = new LinkedHashMap<>();
         String hook = hookUrl();
         if (hook == null || hook.isBlank()) {
@@ -134,7 +157,6 @@ public class DailyReportService {
             result.put("message", "未配置企业微信 webhook（设置 → AI 设置 → 接口与推送）");
             return result;
         }
-        String text = buildReport();
         try {
             String payload = objectMapper.writeValueAsString(Map.of(
                     "msgtype", "text",
@@ -144,17 +166,34 @@ public class DailyReportService {
                     .execute()
                     .returnContent()
                     .asString();
-            log.info("日报推送响应: {}", response);
-            markSent();
+            log.info("企业微信推送响应: {}", response);
             result.put("sent", true);
             result.put("message", "已推送到企业微信");
             result.put("text", text);
             return result;
         } catch (Exception error) {
-            log.warn("日报推送失败: {}", error.getMessage());
+            log.warn("企业微信推送失败: {}", error.getMessage());
             result.put("sent", false);
             result.put("message", "推送失败：" + error.getMessage());
             return result;
+        }
+    }
+
+    /** 投递中定期播报是否开启。 */
+    public boolean progressEnabled() {
+        String raw = configService.getConfigValue(KEY_PROGRESS_ENABLED);
+        return raw != null && ("1".equals(raw.trim()) || "true".equalsIgnoreCase(raw.trim()));
+    }
+
+    /** 播报间隔（分钟），限制在 5-240，默认 30。 */
+    public int progressIntervalMinutes() {
+        String raw = configService.getConfigValue(KEY_PROGRESS_INTERVAL);
+        if (raw == null || raw.isBlank()) return 30;
+        try {
+            int value = Integer.parseInt(raw.trim());
+            return Math.max(5, Math.min(value, 240));
+        } catch (NumberFormatException error) {
+            return 30;
         }
     }
 
