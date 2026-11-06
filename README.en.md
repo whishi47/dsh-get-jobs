@@ -343,7 +343,7 @@ The Java / Spring Boot source (JDK 21) lives in this repository under [`backend/
    ./gradlew bootJar --no-daemon
    ```
 2. **Stage artifacts**: copy `backend/build/libs/*.jar` to `release-assets/backend.jar`. `backend/assets/getjobs.db.template` contains schema only — copy it as `release-assets/getjobs.db.template`. (**Never** use the runtime `db/getjobs.db`; it may contain API keys and login state.)
-3. **Upload**: `gh release upload v0.1.0 release-assets/backend.jar release-assets/getjobs.db.template --clobber`
+3. **Upload**: `gh release upload <version> release-assets/backend.jar release-assets/getjobs.db.template --clobber`
 4. For a new version, tag it (e.g. `v0.3.1`) and update `CHANGELOG.md`.
 
 > At runtime the plugin fetches both files from GitHub Release; override `jarUrl` / `dbUrl` for mirrors, or use `jarPath` for a local jar.
