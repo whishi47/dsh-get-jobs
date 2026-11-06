@@ -93,6 +93,13 @@ export function Run(): React.ReactElement {
     status.reload()
   }, 3000, watching)
 
+  // 运行状态必须持续轮询：任务可能因为配额到点、异常、或另一处触发而结束，
+  // 只加载一次会让按钮一直停在「停止投递」，点下去才发现任务早没了。
+  usePolling(() => {
+    status.reload()
+    quota.reload()
+  }, 5000, Boolean(api))
+
   useEffect(() => {
     if (login.data?.isLoggedIn && watching) {
       setWatching(false)

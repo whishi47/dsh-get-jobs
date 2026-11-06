@@ -1,6 +1,7 @@
 package com.getjobs.worker.utils;
 
 import com.getjobs.application.service.ConfigService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.fluent.Request;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ public class Bot {
     private static volatile Bot INSTANCE;
 
     private final ConfigService configService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private String hookUrl;
     private boolean isSend;
 
@@ -76,6 +78,9 @@ public class Bot {
     }
 
     public void sendMessageInstance(String message) {
+        // 每次发送前重读配置：Webhook 与开关都是在设置页里改的，Bot 是单例，
+        // 只在构造时缓存一次会导致「改了也不生效，必须重启后端」。
+        reloadConfig();
         if (!isSend) {
             return;
         }
@@ -84,9 +89,10 @@ public class Bot {
             return;
         }
         try {
+            String payload = objectMapper.writeValueAsString(
+                    java.util.Map.of("msgtype", "text", "text", java.util.Map.of("content", message)));
             String response = Request.post(hookUrl)
-                    .bodyString("{\"msgtype\": \"text\", \"text\": {\"content\": \"" + message + "\"}}",
-                            org.apache.hc.core5.http.ContentType.APPLICATION_JSON)
+                    .bodyString(payload, org.apache.hc.core5.http.ContentType.APPLICATION_JSON)
                     .execute()
                     .returnContent()
                     .asString();

@@ -420,9 +420,9 @@ public class JobController {
         Map<String, Object> response = new HashMap<>();
         try {
             if (!job51JobService.isRunning()) {
-                response.put("success", false);
-                response.put("message", "没有正在运行的51job任务");
-                return ResponseEntity.badRequest().body(response);
+                response.put("success", true);
+                response.put("message", "51job任务已经结束，无需停止");
+                return ResponseEntity.ok(response);
             }
             job51JobService.stopDelivery();
             response.put("success", true);

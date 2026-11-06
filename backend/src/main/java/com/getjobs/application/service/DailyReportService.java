@@ -175,9 +175,12 @@ public class DailyReportService {
                 return; // 配置写错了就当没开，不要每分钟抛一次异常
             }
             LocalTime now = LocalTime.now().withSecond(0).withNano(0);
-            if (now.getHour() != point.getHour() || now.getMinute() != point.getMinute()) return;
+            // 过了推送点就补推：后端 21:30 时可能没在运行，或用户刚改完时间。
+            // 同一天只推一次（DAILY_REPORT_LAST），所以晚到也不会刷屏。
+            if (now.isBefore(point)) return;
             if (LocalDate.now().toString().equals(lastSentDay())) return;
-            pushNow();
+            Map<String, Object> result = pushNow();
+            log.info("日报推送结果: {}", result.get("message"));
         } catch (RuntimeException error) {
             log.warn("日报定时任务异常: {}", error.getMessage());
         }

@@ -577,11 +577,14 @@ public class PlaywrightManager {
         // DOM 探测（头像、登录入口）只作兜底 —— 页面一慢就会误判成未登录，
         // 而 /api/boss/start 是拿这个结果做准入的，误判会直接导致"请先登录"。
         try {
+            long now = System.currentTimeMillis();
             for (Cookie cookie : context.cookies(BOSS_URL)) {
-                if (BOSS_LOGIN_COOKIES.contains(cookie.name)
-                        && cookie.value != null && !cookie.value.isBlank()) {
-                    return true;
-                }
+                if (!BOSS_LOGIN_COOKIES.contains(cookie.name)) continue;
+                if (cookie.value == null || cookie.value.isBlank()) continue;
+                // expires <= 0 是会话 cookie；否则必须还没过期。
+                // 只判断"cookie 存在"会把过期 token 也当成已登录。
+                if (cookie.expires != null && cookie.expires > 0 && cookie.expires * 1000 <= now) continue;
+                return true;
             }
         } catch (Exception ignored) {}
 
@@ -1159,6 +1162,9 @@ public class PlaywrightManager {
                 return;
             }
 
+            // 窗口可能被最小化或压在后面，先带到前台
+            try { job51Page.bringToFront(); } catch (Exception ignored) {}
+
             // 先尝试在首页点击“登录/注册”入口
             try {
                 job51Page.navigate(JOB51_URL, new Page.NavigateOptions()
@@ -1449,6 +1455,9 @@ public class PlaywrightManager {
                 throw new IllegalStateException("智联招聘页面未初始化");
             }
 
+            // 导航前先把窗口带到前台，否则用户看不到扫码页
+            try { zhilianPage.bringToFront(); } catch (Exception ignored) {}
+
             // 导航到智联首页，确保DOM就绪
             zhilianPage.navigate(ZHILIAN_URL, new Page.NavigateOptions()
                     .setTimeout(60000)
@@ -1683,6 +1692,12 @@ public class PlaywrightManager {
             Boolean previousStatus = loginStatus.get(platform);
             if (isLoggedIn && (previousStatus == null || !previousStatus)) {
                 onLoginSuccess(platform);
+            } else if (!isLoggedIn && Boolean.TRUE.equals(previousStatus)) {
+                // 登录态回落：cookie 过期 / 被平台踢下线 / 换了账号。
+                // 以前这里只处理"变为已登录"，导致只要登录过一次就永远显示已登录，
+                // token 早已失效面板却还写着「已登录」。
+                log.info("{}平台登录状态已失效，回落为未登录", platform);
+                setLoginStatus(platform, false);
             }
         } catch (Exception e) {
             // 忽略检查过程中的异常，避免影响正常流程
@@ -1763,6 +1778,9 @@ public class PlaywrightManager {
         if (bossPage == null) {
             throw new IllegalStateException("Boss 页面尚未初始化");
         }
+        // 浏览器可能已经开着但被最小化 / 压在其他窗口后面。不带到前台的话，
+        // 用户只会看到「点了没反应」。
+        try { bossPage.bringToFront(); } catch (Exception ignored) {}
         bossPage.navigate(BOSS_URL + "/web/user/?ka=header-login", new Page.NavigateOptions()
                 .setTimeout(60000)
                 .setWaitUntil(WaitUntilState.DOMCONTENTLOADED));
@@ -1807,6 +1825,7 @@ public class PlaywrightManager {
         if (liepinPage == null) {
             throw new IllegalStateException("猎聘页面尚未初始化");
         }
+        try { liepinPage.bringToFront(); } catch (Exception ignored) {}
         liepinPage.navigate("https://www.liepin.com/login", new Page.NavigateOptions()
                 .setTimeout(60000)
                 .setWaitUntil(WaitUntilState.DOMCONTENTLOADED));

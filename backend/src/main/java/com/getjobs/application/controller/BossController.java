@@ -129,9 +129,11 @@ public class BossController {
         Map<String, Object> response = new HashMap<>();
         try {
             if (!bossJobService.isRunning()) {
-                response.put("success", false);
-                response.put("message", "没有正在运行的Boss任务");
-                return ResponseEntity.badRequest().body(response);
+                // 幂等：任务已经结束（配额到点、异常退出、用户已点过）时，
+                // 再点"停止"应当得到"已经停了"，而不是一条 400 报错。
+                response.put("success", true);
+                response.put("message", "Boss任务已经结束，无需停止");
+                return ResponseEntity.ok(response);
             }
             bossJobService.stopDelivery();
             response.put("success", true);

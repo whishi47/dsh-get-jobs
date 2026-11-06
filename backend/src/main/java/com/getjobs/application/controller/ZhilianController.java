@@ -319,9 +319,9 @@ public class ZhilianController {
 
         try {
             if (!zhilianJobService.isRunning()) {
-                response.put("success", false);
-                response.put("message", "没有正在运行的智联招聘任务");
-                return ResponseEntity.badRequest().body(response);
+                response.put("success", true);
+                response.put("message", "智联招聘任务已经结束，无需停止");
+                return ResponseEntity.ok(response);
             }
 
             zhilianJobService.stopDelivery();

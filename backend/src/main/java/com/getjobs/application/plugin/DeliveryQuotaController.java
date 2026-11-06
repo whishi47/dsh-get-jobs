@@ -1,5 +1,6 @@
 package com.getjobs.application.plugin;
 
+import com.getjobs.application.service.AutoDeliveryService;
 import com.getjobs.application.service.DailyReportService;
 import com.getjobs.application.service.DeliveryFailureService;
 import com.getjobs.application.service.DeliveryQuotaService;
@@ -24,13 +25,16 @@ public class DeliveryQuotaController {
     private final DeliveryQuotaService quotaService;
     private final DailyReportService reportService;
     private final DeliveryFailureService failureService;
+    private final AutoDeliveryService autoService;
 
     public DeliveryQuotaController(DeliveryQuotaService quotaService,
                                    DailyReportService reportService,
-                                   DeliveryFailureService failureService) {
+                                   DeliveryFailureService failureService,
+                                   AutoDeliveryService autoService) {
         this.quotaService = quotaService;
         this.reportService = reportService;
         this.failureService = failureService;
+        this.autoService = autoService;
     }
 
     /** 今日进度、目标、剩余额度、是否在允许时间段内、风控冷却状态。 */
@@ -43,6 +47,8 @@ public class DeliveryQuotaController {
         failures.put("retryable", failureService.todayRetryableCount("boss"));
         failures.put("byReason", failureService.todayByReason("boss"));
         data.put("failures", failures);
+        // 定时投递的开关/时间/平台，和配额一起返回，面板一个请求就能渲染完整状态
+        data.put("autoDelivery", autoService.status());
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
         body.put("data", data);

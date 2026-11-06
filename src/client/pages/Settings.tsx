@@ -305,6 +305,9 @@ export function Settings(): React.ReactElement {
       DAILY_REPORT_ENABLED: appConfig.data?.['DAILY_REPORT_ENABLED'] ?? '0',
       DAILY_REPORT_TIME: appConfig.data?.['DAILY_REPORT_TIME'] ?? '21:30',
       DELIVERY_COOLDOWN_MINUTES: appConfig.data?.['DELIVERY_COOLDOWN_MINUTES'] ?? '30',
+      AUTO_DELIVERY_ENABLED: appConfig.data?.['AUTO_DELIVERY_ENABLED'] ?? '0',
+      AUTO_DELIVERY_TIME: appConfig.data?.['AUTO_DELIVERY_TIME'] ?? '09:30',
+      AUTO_DELIVERY_PLATFORMS: appConfig.data?.['AUTO_DELIVERY_PLATFORMS'] ?? 'boss',
     })
   }, [appConfig.data])
 
@@ -378,7 +381,7 @@ export function Settings(): React.ReactElement {
     setBackupNotice(undefined)
     try {
       await api.saveAppConfig(reportForm)
-      setBackupNotice('日报设置已保存，到点会自动推送')
+      setBackupNotice('设置已保存，到点会自动执行')
       report.reload()
       appConfig.reload()
     } catch (caught) {
@@ -1077,6 +1080,51 @@ export function Settings(): React.ReactElement {
             </Button>
             <Button icon="check" onClick={sendReport} disabled={!api || reportPending !== undefined}>
               {reportPending === 'send' ? '推送中…' : '立即推送一次'}
+            </Button>
+          </div>
+        </Card>
+
+        <Card
+          title="定时投递"
+          actions={
+            <Badge tone={(reportForm?.['AUTO_DELIVERY_ENABLED'] ?? '0') === '1' ? 'success' : 'neutral'}>
+              {(reportForm?.['AUTO_DELIVERY_ENABLED'] ?? '0') === '1'
+                ? `每天 ${reportForm?.['AUTO_DELIVERY_TIME'] ?? '09:30'}`
+                : '未开启'}
+            </Badge>
+          }
+        >
+          <div style={{ fontSize: tokens.font.sm, color: tokens.color.textMuted }}>
+            每天到点自动按顺序跑指定平台。今日目标、风控冷却、允许时段照常生效，投满会自动收工；
+            同一天只触发一次，后端重启后会补跑当天还没跑过的任务。
+          </div>
+
+          <Toggle
+            checked={(reportForm?.['AUTO_DELIVERY_ENABLED'] ?? '0') === '1'}
+            label="开启定时投递"
+            onChange={(next) => setReportForm((prev) => ({ ...(prev ?? {}), AUTO_DELIVERY_ENABLED: next ? '1' : '0' }))}
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="开始时间" hint="24 小时制，如 09:30">
+              <Input
+                value={reportForm?.['AUTO_DELIVERY_TIME'] ?? ''}
+                placeholder="09:30"
+                onChange={(event) => setReportForm((prev) => ({ ...(prev ?? {}), AUTO_DELIVERY_TIME: event.target.value }))}
+              />
+            </Field>
+            <Field label="平台顺序" hint="逗号分隔：boss,liepin,51job,zhilian">
+              <Input
+                value={reportForm?.['AUTO_DELIVERY_PLATFORMS'] ?? ''}
+                placeholder="boss"
+                onChange={(event) => setReportForm((prev) => ({ ...(prev ?? {}), AUTO_DELIVERY_PLATFORMS: event.target.value }))}
+              />
+            </Field>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button tone="primary" onClick={saveReport} disabled={!api || !reportForm || reportPending !== undefined}>
+              {reportPending === 'save' ? '保存中…' : '保存定时设置'}
             </Button>
           </div>
         </Card>

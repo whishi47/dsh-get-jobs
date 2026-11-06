@@ -121,9 +121,9 @@ public class LiepinController {
 
         try {
             if (!liepinJobService.isRunning()) {
-                response.put("success", false);
-                response.put("message", "没有正在运行的猎聘任务");
-                return ResponseEntity.badRequest().body(response);
+                response.put("success", true);
+                response.put("message", "猎聘任务已经结束，无需停止");
+                return ResponseEntity.ok(response);
             }
 
             liepinJobService.stopDelivery();
