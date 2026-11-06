@@ -6,7 +6,7 @@
 
 ---
 
-## [Unreleased]
+## [v0.12.0] - 2026-11-06
 
 ### 🐛 Fixed
 - **后端不再托管旧版管理页面**：移除 `StaticServerConfiguration` / `StaticResourceConfiguration`，不再在 6866 端口额外开 Tomcat 连接器，`/env-config` 等页面彻底不可访问；`StartupRunner` 也不再探测 6866、不再自动打开浏览器。后端只保留 9527 的 HTTP API，界面统一由 DSH 插件面板提供。
