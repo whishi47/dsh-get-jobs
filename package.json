@@ -1,8 +1,8 @@
 {
   "name": "dsh-get-jobs",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "private": false,
-  "description": "投简历还在手动点「打招呼」？把 Boss直聘 / 猎聘 / 51job / 智联 的岗位筛选、AI 打招呼、自动投递与记录导出，做进 DeepSeek Harness 的一个可视化面板。一条命令装好，不用装数据库、不用编译、不用手动起后端。禁止商用。",
+  "description": "投简历还在手动点「打招呼」？把 Boss直聘 / 猎聘 / 51job / 智联 的岗位筛选、AI 打招呼、自动投递与记录导出，做进 DeepSeek Harness 的一个可视化面板。一条命令装好，不用装数据库、不用编译、不用手动起后端。使用前请自行评估平台风控与账号风险。",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",
@@ -11,7 +11,7 @@
     "boss",
     "liepin"
   ],
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "MIT",
   "author": "mattan",
   "repository": {
     "type": "git",
@@ -50,7 +50,6 @@
     "LICENSE"
   ],
   "scripts": {
-    "prepare": "node scripts/prepare.mjs",
     "build": "node scripts/build.mjs",
     "build:node": "node scripts/build.mjs --node",
     "build:client": "node scripts/build.mjs --client",
@@ -60,7 +59,8 @@
     "check": "npm run build && npm run gates && npm test"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "dsh": ">=0.2.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",

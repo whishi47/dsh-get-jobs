@@ -80,6 +80,6 @@ java -jar build/libs/dsh-get-jobs-backend-2.0.1.jar
 
 ## 许可证
 
-[PolyForm Noncommercial License 1.0.0](LICENSE)：**仅限非商业用途**，允许个人学习、技术参考与辅助求职投递场景下的使用、修改与再分发；商业使用须另行取得书面授权。
+[MIT](LICENSE)：允许使用、复制、修改、合并、发布、分发、再许可与销售，保留版权与许可声明即可。
 
 Copyright © 2026 mattan.

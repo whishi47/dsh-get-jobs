@@ -15,7 +15,7 @@
 
 ![status](https://img.shields.io/badge/status-beta-orange.svg)
 ![build](https://img.shields.io/badge/build-none-brightgreen.svg)
-![PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)
+![MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-green.svg)
 ![JDK](https://img.shields.io/badge/JDK-21-orange.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
@@ -110,7 +110,7 @@
 
 - 使用本项目即表示你理解并自愿承担上述风险；账号处罚、数据丢失、投递纠纷等后果由使用者自行承担，作者不承担责任。
 - 本项目与 **Boss 直聘、猎聘、51job、智联招聘** 及其运营方**没有任何隶属、合作或背书关系**，相关名称与商标归各自所有者。
-- 请遵守各平台用户协议与当地法律法规；**禁止任何商业用途**（见[许可证](#-许可证)）。
+- 请遵守各平台用户协议与当地法律法规；使用前请自行评估平台风控与账号风险（见[许可证](#-许可证)）。
 
 ---
 
@@ -374,20 +374,48 @@ npm run check      # build + gates + test 一次跑完
 
 欢迎 Issue 反馈与 Pull Request。流程与提交规范详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## 🔐 权限与外部服务
+
+插件运行时会用到以下能力，全部在你本机执行，没有作者服务器参与：
+
+| 能力 | 用在哪 | 说明 |
+| --- | --- | --- |
+| 文件读写 | `db/getjobs.db`、`data/`、`browser-data/`、`~/.dsh/get-jobs` | 存配置、投递记录、日志与平台登录态；首次启动下载后端 jar |
+| 网络访问 | 四个招聘平台、你配置的 AI 接口、企业微信 webhook、GitHub Release | 全部走你本机的网络与账号，不经过作者 |
+| 命令执行 | `java -jar` 启动后端、Playwright 驱动浏览器 | 只启动随插件分发的后端 jar 与浏览器，不执行远程脚本 |
+| 凭据处理 | 平台 Cookie、AI API Key、企业微信 webhook | Cookie 存本地浏览器目录，Key 存本地 SQLite（明文），不会上传 |
+
+依赖与失败边界：需要 JDK 21、Node ≥ 20；平台改版会导致选择器失效，需要升级插件；AI 接口不可用时只影响招呼语生成，不影响已配置的手动投递。
+
+## ✅ 兼容性与验证
+
+- DSH：`>=0.2.0`（见 `package.json` 的 `engines.dsh`）
+- Node：`>=20`
+- JDK：21（后端运行）
+- 平台：Windows / macOS / Linux（Playwright 有头浏览器）
+
+一次性 Profile 验证（安装 / 启动 / 卸载）：
+
+```bash
+dsh plugin --profile verify add "github:whishi47/dsh-get-jobs#master"
+dsh --profile verify --dump-config | grep dsh-get-jobs   # 应看到插件条目
+dsh plugin --profile verify remove dsh-get-jobs
+```
+
 ## 📑 更新日志
 
 所有重要变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 📜 许可证
 
-- **协议文件**：[PolyForm Noncommercial 1.0.0](LICENSE)，**明确禁止任何商业用途**，仅允许个人学习交流、技术参考与辅助求职投递之非商业使用、复制、修改与再分发。
-- **使用边界**：如用于任何商业目的，须事先取得作者书面授权。
-- **署名要求**：再分发须保留原作者署名（mattan）与许可证声明，不得移除。
+- **协议文件**：[MIT](LICENSE)，允许使用、复制、修改、合并、发布、分发、再许可与销售，唯一要求是保留版权与许可声明。
+- **免责**：软件按「现状」提供，不附带任何明示或暗示担保；账号风控、数据丢失、投递纠纷等风险由使用者自行承担。
+- **署名要求**：再分发须保留原作者署名（mattan）、版权声明与许可证声明，不得移除。
 
 ---
 
 <div align="center">
 
-Copyright © 2026 mattan. All Rights Reserved.
+Copyright © 2026 mattan. Licensed under the MIT License.
 
 </div>

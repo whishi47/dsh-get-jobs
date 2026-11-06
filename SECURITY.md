@@ -71,4 +71,4 @@
 
 ## 许可证
 
-本项目采用 [PolyForm Noncommercial 1.0.0](LICENSE)，**禁止任何商业用途**。
+本项目采用 [MIT](LICENSE) 协议。

@@ -15,7 +15,7 @@ into one visual dashboard inside DeepSeek Harness.
 
 ![status](https://img.shields.io/badge/status-beta-orange.svg)
 ![build](https://img.shields.io/badge/build-none-brightgreen.svg)
-![PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)
+![MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-green.svg)
 ![JDK](https://img.shields.io/badge/JDK-21-orange.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
@@ -25,7 +25,7 @@ into one visual dashboard inside DeepSeek Harness.
 ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?logo=playwright&logoColor=white)
 ![DSH](https://img.shields.io/badge/DeepSeek%20Harness-plugin-9cf.svg)
 
-> This is the English documentation. The repository is a personal open-source project by **mattan**, published under **PolyForm Noncommercial 1.0.0**: personal learning, study and assisting your own job search are allowed; **commercial use is prohibited**. See [Disclaimer](#-before-you-use-read-these-four-lines).
+> This is the English documentation. The repository is a personal open-source project by **mattan**, published under the **MIT License**. See [Disclaimer](#-before-you-use-read-these-four-lines).
 
 ---
 
@@ -360,7 +360,7 @@ All notable changes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## 📜 License
 
-- **License**: [PolyForm Noncommercial 1.0.0](LICENSE). **Commercial use is explicitly prohibited.** Non-commercial use, copying, modification and redistribution for personal learning, technical study, and assisting your own job search are permitted.
+- **License**: [MIT](LICENSE). Use, copy, modify, merge, publish, distribute, sublicense and sell are permitted; the only requirement is to keep the copyright and license notice.
 - **Commercial use** requires prior written permission from the author.
 - **Attribution**: redistribution must keep the author credit (mattan) and the license notice.
 
@@ -368,6 +368,6 @@ All notable changes are in [CHANGELOG.md](CHANGELOG.md).
 
 <div align="center">
 
-Copyright © 2026 mattan. All Rights Reserved.
+Copyright © 2026 mattan. Licensed under the MIT License.
 
 </div>

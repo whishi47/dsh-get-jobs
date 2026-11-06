@@ -6,6 +6,14 @@
 
 ---
 
+## [v0.12.1] - 2026-11-06
+
+### 🔧 Changed
+- **许可证改回 MIT**：GitHub 无法识别 PolyForm Noncommercial（返回 `NOASSERTION`），DSH STORE 的自动检查因此把插件判为 `Catalog blocked`。改用标准 SPDX 许可证 MIT，并让 LICENSE、`package.json`、徽章与仓库描述保持一致。
+- **移除 `prepare` 生命周期脚本**：`lib/` 已随仓库发布，公开安装不需要安装期构建，`prepare` 删除后安装不再执行任何项目脚本。
+- **声明 DSH 兼容范围**：`package.json` 增加 `engines.dsh = ">=0.2.0"`。
+- **README 补充「权限与外部服务」「兼容性与验证」**：说明文件 / 网络 / 命令 / 凭据四类权限的用途、依赖与失败边界，以及一次性 Profile 的安装 / 启动 / 卸载步骤。
+
 ## [v0.12.0] - 2026-11-06
 
 ### 🐛 Fixed
