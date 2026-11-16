@@ -236,17 +236,27 @@ public class DeliveryQuotaService {
         return raw != null && ("1".equals(raw.trim()) || "true".equalsIgnoreCase(raw.trim()));
     }
 
-    /** 公司冷却天数；未配置或 0 表示不启用。 */
+    /** 公司冷却默认天数：未配置时按近三天处理。 */
+    public static final int DEFAULT_COMPANY_COOLDOWN_DAYS = 3;
+
+    /** 公司冷却天数；未配置时默认 3 天，显式填 0 表示关闭。 */
     public int companyCooldownDays() {
-        return readInt(KEY_COMPANY_COOLDOWN_DAYS);
+        String raw = configService.getConfigValue(KEY_COMPANY_COOLDOWN_DAYS);
+        if (raw == null || raw.isBlank()) return DEFAULT_COMPANY_COOLDOWN_DAYS;
+        try {
+            return Math.max(Integer.parseInt(raw.trim()), 0);
+        } catch (NumberFormatException error) {
+            return DEFAULT_COMPANY_COOLDOWN_DAYS;
+        }
     }
 
     /**
      * 最近 N 天内已经投递成功的公司名集合。
      *
-     * <p>数据源是 {@code boss_data}：投递成功时状态会改成「已投递」，比另建一张表更可靠。
-     * 日期比较只取 {@code updated_at} 的前 10 位（ISO 日期），避免 SQLite 解析不了
-     * 带纳秒的字符串；表为空或 SQL 出错时返回空集合 —— 冷却只是"少投"，不该因此卡住投递。
+     * <p>按自然日比较，含今天：N=3 时从「今天 - 3 天」的 00:00 起算，保证任何一家公司
+     * 至少间隔 3 天才可能被再次投递。日期比较只取 {@code updated_at} 的前 10 位（ISO 日期），
+     * 避免 SQLite 解析不了带纳秒的字符串；表为空或 SQL 出错时返回空集合 ——
+     * 冷却只是"少投"，不该因此卡住投递。
      */
     public Set<String> recentDeliveredCompanies(int days) {
         if (days <= 0) return Set.of();
