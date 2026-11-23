@@ -1263,6 +1263,27 @@ public class Boss {
                     return false;
                 }
             }
+
+            // 5. AI 匹配判断必须在打开聊天页之前：
+            //    不匹配就直接跳过，不要留下一个空聊天窗（既让人以为发送失败，也会打扰 HR）。
+            String aiMessage = null;
+            if (!repeatChat && Boolean.TRUE.equals(config.getEnableAI())) {
+                String jd = job.getJobInfo();
+                if (jd != null && !jd.isEmpty()) {
+                    AiMessageDecision decision = generateAiMessage(keyword, job.getJobName(), jd);
+                    if (decision.skipCurrentJob()) {
+                        log.info("AI返回false，跳过当前岗位投递（未打开聊天页）| 公司：{} | 岗位：{}",
+                                job.getCompanyName(), job.getJobName());
+                        if (progressCallback != null) {
+                            progressCallback.accept("AI判断不匹配，跳过当前岗位：" + job.getJobName(), 0, 0);
+                        }
+                        try { detailPage.close(); } catch (Exception ignore) {}
+                        return false;
+                    }
+                    aiMessage = decision.message();
+                }
+            }
+
             BossChatNavigator.Chat chat = navigator.open(chatBtn.first(), repeatChat,
                     Boolean.TRUE.equals(config.getAllowRepeatChat()), shouldStopCallback, 20_000);
             if (chat == null) return false;
@@ -1278,24 +1299,6 @@ public class Boss {
             }
             Locator inputLocator = chat.input();
 
-            // 5. AI智能生成打招呼语
-            String aiMessage = null;
-            if (!repeatChat && Boolean.TRUE.equals(config.getEnableAI())) {
-                String jd = job.getJobInfo();
-                if (jd != null && !jd.isEmpty()) {
-                    AiMessageDecision decision = generateAiMessage(keyword, job.getJobName(), jd);
-                    if (decision.skipCurrentJob()) {
-                        log.info("AI返回false，跳过当前岗位投递 | 公司：{} | 岗位：{}",
-                                job.getCompanyName(), job.getJobName());
-                        if (progressCallback != null) {
-                            progressCallback.accept("AI判断不匹配，跳过当前岗位：" + job.getJobName(), 0, 0);
-                        }
-                        try { detailPage.close(); } catch (Exception ignore) {}
-                        return false;
-                    }
-                    aiMessage = decision.message();
-                }
-            }
             // 首次沟通：AI 正文前面拼一段固定开头（配置项 GREETING_PREFIX，可为空）。
             // 重试沟通是自己写的话术，不拼，避免重复自我介绍。
             String message = repeatChat
