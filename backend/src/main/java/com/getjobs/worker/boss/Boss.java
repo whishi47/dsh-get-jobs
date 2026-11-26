@@ -404,6 +404,14 @@ public class Boss {
                     return;
                 }
 
+                // 每个岗位处理前先按 wait_time 停顿。放在过滤与 continue 之前，
+                // 保证被黑名单 / 公司冷却 / AI 不匹配跳过的岗位同样降速 ——
+                // 原来停顿只在循环末尾，continue 会直接跳过它，184 个岗位里大部分被跳过时
+                // 等于连续快速点详情页，很容易触发风控。
+                if (i > 0) {
+                    pauseBetweenJobs();
+                }
+
                 // 重新获取卡片，避免元素过期
                 cards = page.locator("//ul[contains(@class, 'rec-job-list')]//li[contains(@class, 'job-card-box')]");
                 // 在点击卡片时同步等待岗位详情接口返回，随后解析并入库
@@ -538,8 +546,7 @@ public class Boss {
                     }
                 } catch (Throwable ignore) {}
 
-                // 按 wait_time 降速，别把风控刷出来
-                pauseBetweenJobs();
+                // 停顿已移到循环开头，这里不再重复等待
 
                 // 停顿期间可能已经被弹到安全验证页，发现了就停下来等人工过验证，
                 // 而不是继续闷头点下去（继续点只会让后面的关键词全部失败）
@@ -2169,8 +2176,8 @@ public class Boss {
         return null;
     }
 
-    /** wait_time 没配或配得不合法时用的秒数 */
-    private static final int DEFAULT_WAIT_TIME_SECONDS = 10;
+    /** wait_time 没配或配得不合法时用的秒数；20 秒是实测风控较稳的下限。 */
+    private static final int DEFAULT_WAIT_TIME_SECONDS = 20;
 
     /**
      * 取配置里的 wait_time（秒），非法值一律退回默认值。

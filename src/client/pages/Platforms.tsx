@@ -40,7 +40,7 @@ const FIELDS: Record<Platform, FieldDef[]> = {
     { key: 'stage', label: '融资阶段', type: 'multi', optionKey: 'stage' },
     { key: 'expectedSalaryMin', label: '期望薪资下限（K）', type: 'int' },
     { key: 'expectedSalaryMax', label: '期望薪资上限（K）', type: 'int' },
-    { key: 'waitTime', label: '页面操作等待（秒）', type: 'int' },
+    { key: 'waitTime', label: '岗位间等待（秒）', type: 'int', hint: '每个岗位处理前随机停「一半~全值」秒；建议 20-30，太短容易触发风控' },
     { key: 'sayHi', label: '默认打招呼语', type: 'long', hint: 'AI 关闭或返回为空时使用' },
     { key: 'enableAi', label: 'AI 生成打招呼语', type: 'bool' },
     { key: 'sendImgResume', label: '发送图片简历', type: 'bool' },
