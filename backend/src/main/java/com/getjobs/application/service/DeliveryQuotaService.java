@@ -236,8 +236,13 @@ public class DeliveryQuotaService {
         return raw != null && ("1".equals(raw.trim()) || "true".equalsIgnoreCase(raw.trim()));
     }
 
-    /** 公司冷却默认天数：未配置时按近三天处理。 */
-    public static final int DEFAULT_COMPANY_COOLDOWN_DAYS = 3;
+    /** 公司冷却默认天数：未配置时按近七天处理。 */
+    public static final int DEFAULT_COMPANY_COOLDOWN_DAYS = 7;
+
+    /** 同一公司累计投递上限的配置键；达到后不再投。 */
+    public static final String KEY_COMPANY_MAX_ATTEMPTS = "DELIVERY_COMPANY_MAX_ATTEMPTS";
+    /** 同一公司累计投递上限默认值；0 = 不限。 */
+    public static final int DEFAULT_COMPANY_MAX_ATTEMPTS = 3;
 
     /** 公司冷却天数；未配置时默认 3 天，显式填 0 表示关闭。 */
     public int companyCooldownDays() {
@@ -247,6 +252,63 @@ public class DeliveryQuotaService {
             return Math.max(Integer.parseInt(raw.trim()), 0);
         } catch (NumberFormatException error) {
             return DEFAULT_COMPANY_COOLDOWN_DAYS;
+        }
+    }
+
+    /** 同公司累计投递上限；未配置时默认 3 次，显式填 0 表示不限。 */
+    public int companyMaxAttempts() {
+        String raw = configService.getConfigValue(KEY_COMPANY_MAX_ATTEMPTS);
+        if (raw == null || raw.isBlank()) return DEFAULT_COMPANY_MAX_ATTEMPTS;
+        try {
+            return Math.max(Integer.parseInt(raw.trim()), 0);
+        } catch (NumberFormatException error) {
+            return DEFAULT_COMPANY_MAX_ATTEMPTS;
+        }
+    }
+
+    /**
+     * 累计已投递次数达到上限的公司集合。
+     *
+     * <p>{@code boss_data} 没有「HR 是否回复」字段，无法精确判断"投了没回"，
+     * 所以用累计投递次数做代理：同一家公司投到 N 次还没有任何转化，就不再浪费额度。
+     * 同公司同岗位已被 {@link #hasDeliveredSameJob} 永久去重，所以这里的计数≈不同岗位数。
+     */
+    public Set<String> overDeliveredCompanies(int maxAttempts) {
+        if (maxAttempts <= 0) return Set.of();
+        try {
+            List<String> names = jdbc.queryForList(
+                    "SELECT company_name FROM boss_data "
+                            + "WHERE delivery_status = '已投递' AND company_name IS NOT NULL AND company_name <> '' "
+                            + "GROUP BY company_name HAVING COUNT(*) >= ?",
+                    String.class, maxAttempts);
+            Set<String> result = new HashSet<>();
+            for (String name : names) {
+                if (name != null && !name.isBlank()) result.add(name.trim());
+            }
+            return result;
+        } catch (RuntimeException error) {
+            log.debug("读取超限公司列表失败，按未超限处理: {}", error.getMessage());
+            return Set.of();
+        }
+    }
+
+    /**
+     * 同一家公司、同一个岗位是否已经投过（不限时间）。
+     *
+     * <p>同一个岗位重复投没有意义，HR 也会看到重复招呼，所以这条是永久去重，
+     * 不受公司冷却天数影响。
+     */
+    public boolean hasDeliveredSameJob(String company, String jobName) {
+        if (company == null || company.isBlank() || jobName == null || jobName.isBlank()) return false;
+        try {
+            Integer count = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM boss_data "
+                            + "WHERE delivery_status = '已投递' AND company_name = ? AND job_name = ?",
+                    Integer.class, company.trim(), jobName.trim());
+            return count != null && count > 0;
+        } catch (RuntimeException error) {
+            log.debug("查询同公司同岗位投递记录失败，按未投过处理: {}", error.getMessage());
+            return false;
         }
     }
 

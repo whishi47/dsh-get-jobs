@@ -74,7 +74,8 @@ export function Run(): React.ReactElement {
           DELIVERY_DAILY_TARGET_51JOB: config['DELIVERY_DAILY_TARGET_51JOB'] ?? '0',
           DELIVERY_DAILY_TARGET_ZHILIAN: config['DELIVERY_DAILY_TARGET_ZHILIAN'] ?? '0',
           DELIVERY_WORK_HOURS: config['DELIVERY_WORK_HOURS'] ?? '',
-          DELIVERY_COMPANY_COOLDOWN_DAYS: config['DELIVERY_COMPANY_COOLDOWN_DAYS'] ?? '3',
+          DELIVERY_COMPANY_COOLDOWN_DAYS: config['DELIVERY_COMPANY_COOLDOWN_DAYS'] ?? '7',
+          DELIVERY_COMPANY_MAX_ATTEMPTS: config['DELIVERY_COMPANY_MAX_ATTEMPTS'] ?? '3',
           DELIVERY_RETRY_FAILED: config['DELIVERY_RETRY_FAILED'] ?? '0',
         })
       })
@@ -357,12 +358,20 @@ export function Run(): React.ReactElement {
               onChange={(event) => { setQuotaForm((prev) => ({ ...(prev ?? {}), DELIVERY_WORK_HOURS: event.target.value })); setQuotaNotice(undefined) }}
             />
           </Field>
-          <Field label="公司冷却（天）" hint="同一家公司 N 天内不重复投；默认 3 天，0 = 关">
+          <Field label="公司冷却（天）" hint="同一家公司 N 天内不重复投；默认 7 天，0 = 关">
             <Input
               value={quotaForm?.['DELIVERY_COMPANY_COOLDOWN_DAYS'] ?? ''}
-              placeholder="3"
+              placeholder="7"
               inputMode="numeric"
               onChange={(event) => { setQuotaForm((prev) => ({ ...(prev ?? {}), DELIVERY_COMPANY_COOLDOWN_DAYS: event.target.value })); setQuotaNotice(undefined) }}
+            />
+          </Field>
+          <Field label="同公司累计上限（次）" hint="投满 N 次后不再投；默认 3，0 = 不限">
+            <Input
+              value={quotaForm?.['DELIVERY_COMPANY_MAX_ATTEMPTS'] ?? ''}
+              placeholder="3"
+              inputMode="numeric"
+              onChange={(event) => { setQuotaForm((prev) => ({ ...(prev ?? {}), DELIVERY_COMPANY_MAX_ATTEMPTS: event.target.value })); setQuotaNotice(undefined) }}
             />
           </Field>
         </div>

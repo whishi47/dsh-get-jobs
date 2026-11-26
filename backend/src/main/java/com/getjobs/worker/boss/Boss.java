@@ -77,6 +77,8 @@ public class Boss {
 
     /** 公司冷却天数（0 = 未启用）与冷却期内的公司集合，运行时加载一次。 */
     private int companyCooldownDays = 0;
+    /** 累计投递达到上限的公司；整个运行只查一次库。 */
+    private java.util.Set<String> overDeliveredCompanies = java.util.Collections.emptySet();
     private Set<String> deliveredCompanies = Set.of();
 
     /**
@@ -145,6 +147,11 @@ public class Boss {
         deliveredCompanies = deliveryQuotaService.recentDeliveredCompanies(companyCooldownDays);
         if (companyCooldownDays > 0) {
             log.info("公司冷却已启用：{} 天，涉及 {} 家公司", companyCooldownDays, deliveredCompanies.size());
+        }
+        int maxAttempts = deliveryQuotaService.companyMaxAttempts();
+        overDeliveredCompanies = deliveryQuotaService.overDeliveredCompanies(maxAttempts);
+        if (maxAttempts > 0) {
+            log.info("公司累计投递上限已启用：{} 次，涉及 {} 家公司", maxAttempts, overDeliveredCompanies.size());
         }
         // 今天已经投够了就直接收工，别让浏览器白开一趟
         if (deliveryQuotaService.isReached("boss")) {
@@ -529,6 +536,19 @@ public class Boss {
                 if (companyCooldownDays > 0 && bossCompany != null
                         && deliveredCompanies.contains(bossCompany.trim())) {
                     log.info("被过滤：公司冷却期内已投过 | 公司：{} | 岗位：{}", bossCompany, jobName);
+                    continue;
+                }
+
+                // 公司累计投递达到上限：投了很多次都没转化，不再浪费额度
+                if (!overDeliveredCompanies.isEmpty() && bossCompany != null
+                        && overDeliveredCompanies.contains(bossCompany.trim())) {
+                    log.info("被过滤：公司累计投递已达上限 | 公司：{} | 岗位：{}", bossCompany, jobName);
+                    continue;
+                }
+
+                // 同公司同岗位永久去重：重复投同一个岗位没有意义，HR 也会看到重复招呼
+                if (deliveryQuotaService.hasDeliveredSameJob(bossCompany, jobName)) {
+                    log.info("被过滤：同公司同岗位已投过 | 公司：{} | 岗位：{}", bossCompany, jobName);
                     continue;
                 }
 
